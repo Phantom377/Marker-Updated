@@ -4,21 +4,22 @@ import json
 import subprocess
 from pathlib import Path
 from enum import Enum
-from typing import Optional
+from typing import Optional, List, Dict, Any
 
 
-# ── Enums ─────────────────────────────────────────────────────────────────
 class OutputFormat(Enum):
     MARKDOWN = "markdown"
     JSON = "json"
     HTML = "html"
     CHUNKS = "chunks"
 
+
 class ConverterType(Enum):
     PDF = "marker.converters.pdf.PdfConverter"
     TABLE = "marker.converters.table.TableConverter"
     OCR = "marker.converters.ocr.OCRConverter"
     EXTRACTION = "marker.converters.extraction.ExtractionConverter"
+
 
 class LLMService(Enum):
     GEMINI = "marker.services.gemini.GoogleGeminiService"
@@ -29,14 +30,13 @@ class LLMService(Enum):
     AZURE = "marker.services.azure_openai.AzureOpenAIService"
 
 
-# ── Main class ────────────────────────────────────────────────────────────
 class MarkerWrapper:
     def __init__(
         self,
-        output_dir: str = "./conversion_results",
-        gemini_api_key: str = None,
-        claude_api_key: str = None,
-        openai_api_key: str = None,
+        output_dir="./conversion_results",
+        gemini_api_key=None,
+        claude_api_key=None,
+        openai_api_key=None,
     ):
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
@@ -48,85 +48,73 @@ class MarkerWrapper:
         if openai_api_key:
             os.environ["OPENAI_API_KEY"] = openai_api_key
 
-    # ── Post-processing: lightweight cleanup only ─────────────────────────
-    def fix_latex(self, markdown: str) -> str:
-        """
-        Lightweight post-processor for simple cleanup only.
-        Complex equation fixes (Word fractions, broken LaTeX) are
-        handled by the LLM during conversion — use use_llm=True.
-        """
+    def fix_latex(self, markdown):
         fixes_applied = []
 
-        # Pre-compile patterns
-        TRIPLE_DOLLAR = re.compile(r'\$\$\$+')
-        BR_IN_CELL    = re.compile(r'(\S)<br>(\S)')
-        BR_LONELY     = re.compile(r'<br>')
-        BLOCK_ENV     = re.compile(
-            r'(?<!\$)\$(?!\$)((?:[^$\n])*?\\begin\{'
-            r'(?:array|cases|matrix|pmatrix|bmatrix|vmatrix|align|gather|multline|aligned)'
-            r'\}(?:[^$\n])*?)(?<!\$)\$(?!\$)'
+        triple_dollar = re.compile(r"\$\$\$+")
+        br_in_cell = re.compile(r"(\S)<br>(\S)")
+        br_lonely = re.compile(r"<br>")
+        block_env = re.compile(
+            r"(?<!\$)\$(?!\$)((?:[^$\n])*?\\begin\{"
+            r"(?:array|cases|matrix|pmatrix|bmatrix|vmatrix|align|gather|multline|aligned)"
+            r"\}(?:[^$\n])*?)(?<!\$)\$(?!\$)"
         )
 
-        # Fix 1 — upgrade inline $ to $$ for block environments
-        lines = markdown.split('\n')
+        lines = markdown.split("\n")
         processed_lines = []
         in_block_math = False
 
         for line in lines:
-            if line.count('$$') % 2 != 0:
+            if line.count("$$") % 2 != 0:
                 in_block_math = not in_block_math
 
-            if '$' in line and not in_block_math:
-                new_line = BLOCK_ENV.sub(
+            if "$" in line and not in_block_math:
+                new_line = block_env.sub(
                     lambda m: (
                         fixes_applied.append("upgraded $ to $$ for block env") or
-                        f"$$\n{m.group(1).strip()}\n$$"
+                        "$$\n{0}\n$$".format(m.group(1).strip())
                     ),
-                    line
+                    line,
                 )
                 processed_lines.append(new_line)
             else:
                 processed_lines.append(line)
 
-        markdown = '\n'.join(processed_lines)
+        markdown = "\n".join(processed_lines)
 
-        # Fix 2 — clean up triple $$$
-        count = len(TRIPLE_DOLLAR.findall(markdown))
+        count = len(triple_dollar.findall(markdown))
         if count:
-            fixes_applied.append(f"cleaned up $$$ ({count}x)")
-        markdown = TRIPLE_DOLLAR.sub('$$', markdown)
+            fixes_applied.append("cleaned up $$$ ({0}x)".format(count))
+        markdown = triple_dollar.sub("$$", markdown)
 
-        # Fix 3 — fix <br> inside table cells e.g. 101 <= X <=<br>500
-        count = len(BR_IN_CELL.findall(markdown))
+        count = len(br_in_cell.findall(markdown))
         if count:
-            fixes_applied.append(f"fixed <br> in table cells ({count}x)")
-        markdown = BR_IN_CELL.sub(r'\1 \2', markdown)
-        markdown = BR_LONELY.sub(' ', markdown)
+            fixes_applied.append("fixed <br> in table cells ({0}x)".format(count))
+        markdown = br_in_cell.sub(r"\1 \2", markdown)
+        markdown = br_lonely.sub(" ", markdown)
 
-        # Report
         if fixes_applied:
-            print(f"  LaTeX fixes applied: {len(fixes_applied)}")
+            print("  LaTeX fixes applied: {0}".format(len(fixes_applied)))
             for fix in fixes_applied:
-                print(f"    - {fix}")
+                print("    - {0}".format(fix))
         else:
             print("  No LaTeX fixes needed")
 
         return markdown
 
-    # ── Single file conversion ───────────────────────────────────────────
     def convert_single(
         self,
-        filepath: str,
-        output_format: OutputFormat = OutputFormat.MARKDOWN,
-        converter: ConverterType = ConverterType.PDF,
-        use_llm: bool = False,
-        llm_service: LLMService = LLMService.GEMINI,
-        force_ocr: bool = False,
-        page_range: str = None,
-        paginate_output: bool = False,
-        disable_image_extraction: bool = False,
-        debug: bool = False,
-    ) -> dict:
+        filepath,
+        output_format=OutputFormat.MARKDOWN,
+        converter=ConverterType.PDF,
+        use_llm=False,
+        llm_service=LLMService.GEMINI,
+        force_ocr=False,
+        page_range=None,
+        paginate_output=False,
+        disable_image_extraction=False,
+        debug=False,
+    ):
         from marker.converters.pdf import PdfConverter
         from marker.converters.table import TableConverter
         from marker.converters.ocr import OCRConverter
@@ -172,32 +160,29 @@ class MarkerWrapper:
         rendered = conv(filepath)
         text, metadata, images = text_from_rendered(rendered)
 
-        # ── Post-processing: lightweight cleanup ──
         if output_format == OutputFormat.MARKDOWN:
             print("  Running LaTeX post-processing...")
             text = self.fix_latex(text)
 
-        # ── Save markdown/json/html ──
         pdf_stem = Path(filepath).stem
         doc_output_dir = self.output_dir / pdf_stem
         doc_output_dir.mkdir(parents=True, exist_ok=True)
 
-        out_file = doc_output_dir / f"{pdf_stem}.{output_format.value}"
+        out_file = doc_output_dir / "{0}.{1}".format(pdf_stem, output_format.value)
         out_file.write_text(text, encoding="utf-8")
-        print(f"Saved text: {out_file}")
+        print("Saved text: {0}".format(out_file))
 
-        # ── Save images ──
         if images:
             images_dir = doc_output_dir / "images"
             images_dir.mkdir(parents=True, exist_ok=True)
 
             saved_images = []
             for img_name, img_data in images.items():
-                img_path = images_dir / f"{img_name}.png"
+                img_path = images_dir / "{0}.png".format(img_name)
                 img_data.save(str(img_path))
                 saved_images.append(str(img_path))
 
-            print(f"Saved {len(saved_images)} images to: {images_dir}")
+            print("Saved {0} images to: {1}".format(len(saved_images), images_dir))
         else:
             print("No images found in document")
             saved_images = []
@@ -207,32 +192,31 @@ class MarkerWrapper:
             "metadata": metadata,
             "images": images,
             "saved_images": saved_images,
-            "output_dir": str(doc_output_dir)
+            "output_dir": str(doc_output_dir),
         }
 
-    # ── Convert all PDFs in a folder ─────────────────────────────────────
     def convert_folder(
         self,
-        input_folder: str,
-        output_format: OutputFormat = OutputFormat.MARKDOWN,
-        use_llm: bool = False,
-        force_ocr: bool = False,
-    ) -> list:
+        input_folder,
+        output_format=OutputFormat.MARKDOWN,
+        use_llm=False,
+        force_ocr=False,
+    ):
         input_path = Path(input_folder)
         if not input_path.exists():
-            raise FileNotFoundError(f"Input folder not found: {input_folder}")
+            raise FileNotFoundError("Input folder not found: {0}".format(input_folder))
 
         pdf_files = list(input_path.glob("*.pdf"))
         if not pdf_files:
-            print(f"No PDF files found in: {input_folder}")
+            print("No PDF files found in: {0}".format(input_folder))
             return []
 
-        print(f"Found {len(pdf_files)} PDF(s) in {input_folder}")
-        print(f"Output will be saved to: {self.output_dir}\n")
+        print("Found {0} PDF(s) in {1}".format(len(pdf_files), input_folder))
+        print("Output will be saved to: {0}\n".format(self.output_dir))
 
         results = []
         for i, pdf_path in enumerate(pdf_files, 1):
-            print(f"[{i}/{len(pdf_files)}] Converting: {pdf_path.name}")
+            print("[{0}/{1}] Converting: {2}".format(i, len(pdf_files), pdf_path.name))
             try:
                 result = self.convert_single(
                     filepath=str(pdf_path),
@@ -243,36 +227,41 @@ class MarkerWrapper:
                 result["filename"] = pdf_path.name
                 result["status"] = "success"
                 results.append(result)
-                print(f"✓ Done: {pdf_path.name}\n")
+                print("✓ Done: {0}\n".format(pdf_path.name))
             except Exception as e:
-                print(f"✗ Failed: {pdf_path.name} — {e}\n")
+                print("✗ Failed: {0} — {1}\n".format(pdf_path.name, e))
                 results.append({
                     "filename": pdf_path.name,
                     "status": "failed",
-                    "error": str(e)
+                    "error": str(e),
                 })
 
         success = sum(1 for r in results if r["status"] == "success")
-        failed  = sum(1 for r in results if r["status"] == "failed")
-        print(f"\n── Conversion Summary ──")
-        print(f"Total:   {len(pdf_files)}")
-        print(f"Success: {success}")
-        print(f"Failed:  {failed}")
-        print(f"Output:  {self.output_dir}")
+        failed = sum(1 for r in results if r["status"] == "failed")
+        print("\n── Conversion Summary ──")
+        print("Total:   {0}".format(len(pdf_files)))
+        print("Success: {0}".format(success))
+        print("Failed:  {0}".format(failed))
+        print("Output:  {0}".format(self.output_dir))
 
         return results
 
-    # ── Batch conversion (marker CLI) ────────────────────────────────────
     def convert_batch(
         self,
-        input_folder: str,
-        output_format: OutputFormat = OutputFormat.MARKDOWN,
-        workers: int = None,
-        use_llm: bool = False,
-        force_ocr: bool = False,
+        input_folder,
+        output_format=OutputFormat.MARKDOWN,
+        workers=None,
+        use_llm=False,
+        force_ocr=False,
     ):
-        cmd = ["marker", input_folder, "--output_dir", str(self.output_dir),
-               "--output_format", output_format.value]
+        cmd = [
+            "marker",
+            input_folder,
+            "--output_dir",
+            str(self.output_dir),
+            "--output_format",
+            output_format.value,
+        ]
         if workers:
             cmd += ["--workers", str(workers)]
         if use_llm:
@@ -280,51 +269,48 @@ class MarkerWrapper:
         if force_ocr:
             cmd += ["--force_ocr"]
 
-        print(f"Running batch conversion on: {input_folder}")
+        print("Running batch conversion on: {0}".format(input_folder))
         result = subprocess.run(cmd, capture_output=True, text=True)
         print(result.stdout)
         if result.returncode != 0:
-            raise RuntimeError(f"Batch conversion failed:\n{result.stderr}")
+            raise RuntimeError("Batch conversion failed:\n{0}".format(result.stderr))
 
-    # ── Multi-GPU batch conversion ────────────────────────────────────────
-    def convert_chunk(
-        self,
-        input_folder: str,
-        num_devices: int = 2,
-        num_workers: int = 4,
-    ):
+    def convert_chunk(self, input_folder, num_devices=2, num_workers=4):
         env = os.environ.copy()
         env["NUM_DEVICES"] = str(num_devices)
         env["NUM_WORKERS"] = str(num_workers)
 
         cmd = ["marker_chunk_convert", input_folder, str(self.output_dir)]
-        print(f"Running multi-GPU conversion: {num_devices} GPUs, {num_workers} workers")
+        print(
+            "Running multi-GPU conversion: {0} GPUs, {1} workers".format(
+                num_devices, num_workers
+            )
+        )
         result = subprocess.run(cmd, capture_output=True, text=True, env=env)
         print(result.stdout)
         if result.returncode != 0:
-            raise RuntimeError(f"Chunk conversion failed:\n{result.stderr}")
+            raise RuntimeError("Chunk conversion failed:\n{0}".format(result.stderr))
 
-    # ── API server ────────────────────────────────────────────────────────
-    def start_server(self, port: int = 8001):
+    def start_server(self, port=8001):
         cmd = ["marker_server", "--port", str(port)]
-        print(f"Starting Marker API server on port {port}...")
-        print(f"Docs available at: http://localhost:{port}/docs")
+        print("Starting Marker API server on port {0}...".format(port))
+        print("Docs available at: http://localhost:{0}/docs".format(port))
         subprocess.run(cmd)
 
-    def call_server(self, filepath: str, port: int = 8001, **kwargs) -> dict:
+    def call_server(self, filepath, port=8001, **kwargs):
         import requests
-        data = {"filepath": filepath, **kwargs}
-        res = requests.post(f"http://localhost:{port}/marker", data=json.dumps(data))
+
+        data = {"filepath": filepath}
+        data.update(kwargs)
+
+        res = requests.post(
+            "http://localhost:{0}/marker".format(port),
+            data=json.dumps(data),
+        )
         res.raise_for_status()
         return res.json()
 
-    # ── Structured extraction ─────────────────────────────────────────────
-    def extract_structured(
-        self,
-        filepath: str,
-        schema: dict,
-        llm_service: LLMService = LLMService.GEMINI,
-    ) -> dict:
+    def extract_structured(self, filepath, schema, llm_service=LLMService.GEMINI):
         from marker.converters.extraction import ExtractionConverter
         from marker.models import create_model_dict
         from marker.config.parser import ConfigParser
@@ -344,8 +330,7 @@ class MarkerWrapper:
         rendered = conv(filepath)
         return rendered
 
-    # ── Extract blocks ────────────────────────────────────────────────────
-    def extract_blocks(self, filepath: str, block_type: str = "Table") -> list:
+    def extract_blocks(self, filepath, block_type="Table"):
         from marker.converters.pdf import PdfConverter
         from marker.models import create_model_dict
         from marker.schema import BlockTypes
@@ -355,26 +340,23 @@ class MarkerWrapper:
 
         bt = getattr(BlockTypes, block_type)
         blocks = document.contained_blocks((bt,))
-        print(f"Found {len(blocks)} {block_type} blocks")
+        print("Found {0} {1} blocks".format(len(blocks), block_type))
         return blocks
 
 
-# ── Usage ──────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     marker = MarkerWrapper(
         output_dir="./conversion_results",
-        gemini_api_key="",  # get free key at aistudio.google.com
+        gemini_api_key="",
     )
 
-    # Convert with LLM enabled — fixes equations and tables automatically
     results = marker.convert_folder(
         "./input_equation",
-        use_llm=False,       # enables Gemini to fix equations and tables
-        force_ocr=False,     # re-OCR for better accuracy on Word equations
+        use_llm=False,
+        force_ocr=False,
     )
 
-    # Print a preview of each converted file
     for r in results:
         if r["status"] == "success":
-            print(f"\n── {r['filename']} ──")
-            print(f"Images: {len(r['saved_images'])}")
+            print("\n── {0} ──".format(r["filename"]))
+            print("Images: {0}".format(len(r["saved_images"])))
