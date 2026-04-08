@@ -1,60 +1,37 @@
-# load data into a dictionary
-path = os.path.abspath("./data")
-csv_files = glob.glob(os.path.join(path, "testing", "HalfHourlyConsumption_HTA_2025-06-01_2025-07-01.csv"))
-
-pre_data_dict = {}
-print("csv_files:", csv_files)
-
-for f in csv_files:
-    df = pd.read_csv(f)
-    df = df.rename(columns={"Date": "Time", "HTA (kWh)": "Value"})
-    pre_data_dict[os.path.basename(f)[:-4]] = df
-
-    print("Columns:", df.columns.tolist())
-    print(df.head())
-
-    # Convert Date column properly
-    df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
-    df = df.dropna(subset=["Date"])
-    df = df.set_index("Date")
-
-    # Optional: localize timezone only if needed
-    # df.index = df.index.tz_localize("Asia/Singapore")
-
-    key = os.path.basename(f)[:-4]
-    pre_data_dict[key] = df
-
-print("pre_data_dict keys:", list(pre_data_dict.keys()))
-
-# preprocess data
-preprocessor = Preprocessor(pre_data_dict, miss_val_threshold=0.01)
-data_dict = preprocessor.preprocess()
-
-print("data_dict keys:", list(data_dict.keys()))
-
 measuring_point = "HalfHourlyConsumption_HTA_2025-06-01_2025-07-01"
 data_dict_temp = {measuring_point: data_dict[measuring_point]}
 
 tz = data_dict_temp[measuring_point].index[0].tz
 print("tz:", tz)
 
-# statistic method
-anomalies_detected_dates = []
-
 ad_detector = AutoAD(
     namespace="dsta-be28",
     data_frequency=preprocessor.data_frequency,
     method="statistic",
     unit_of_measurement="Wh",
-    lookback_period=30
+    lookback_period=7
 )
 
-# Use a date that exists in your data
 detection_date = pd.Timestamp("2025-06-17")
+end_date = pd.Timestamp("2025-06-17")
+
 if tz is not None:
     detection_date = detection_date.tz_localize(tz)
+    end_date = end_date.tz_localize(tz)
 
-while detection_date <= pd.Timestamp("2025-06-17", tz=tz) if tz is not None else pd.Timestamp("2025-06-17"):
+start_date = data_dict_temp[measuring_point].index.min()
+print("data starts at:", start_date)
+
+required_start = detection_date - pd.Timedelta(days=ad_detector.lookback_period)
+print("required history starts at:", required_start)
+
+if required_start < start_date:
+    raise ValueError(
+        f"Not enough data for lookback period={ad_detector.lookback_period}. "
+        f"Need data from {required_start}, but only have data from {start_date}."
+    )
+
+while detection_date <= end_date:
     score_df_dict = ad_detector.detect(
         data_dict=data_dict_temp,
         detect_date=detection_date
