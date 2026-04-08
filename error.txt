@@ -1,72 +1,3 @@
-# load data into a dictionary
-path = os.path.abspath("./data")
-csv_files = glob.glob(os.path.join(path, "testing", "HalfHourlyConsumption_HTA_2025-06-01_2025-07-01.csv"))
-pre_data_dict = {}
-
-%matplotlib inline
-import matplotlib.pyplot as plt
-print("csv files found:", len(csv_files))
-
-for f in csv_files:
-    df = pd.read_csv(f)
-    print(f"\nLoading: {os.path.basename(f)}")
-    print("Original columns:", df.columns.tolist())
-
-    # ---- normalize column names to what Preprocessor expects ----
-    # adjust these mappings if your files use different names
-    rename_map = {}
-
-    if "Date" in df.columns:
-        rename_map["Date"] = "Time"
-    elif "Datetime" in df.columns:
-        rename_map["Datetime"] = "Time"
-    elif "Timestamp" in df.columns:
-        rename_map["Timestamp"] = "Time"
-
-    if "Value" not in df.columns:
-        # pick the first non-time column as Value if needed
-        non_time_cols = [c for c in df.columns if c not in ["Date", "Datetime", "Timestamp", "Time"]]
-        if len(non_time_cols) == 1:
-            rename_map[non_time_cols[0]] = "Value"
-
-    df = df.rename(columns=rename_map)
-
-    if "Time" not in df.columns or "Value" not in df.columns:
-        print(f"Skipping {os.path.basename(f)}: could not identify Time/Value columns")
-        continue
-
-    df["Time"] = pd.to_datetime(df["Time"], errors="coerce")
-    df["Value"] = pd.to_numeric(df["Value"], errors="coerce")
-    df = df.dropna(subset=["Time"])
-
-    key = os.path.basename(f)[:-4]
-    pre_data_dict[key] = df[["Time", "Value"]]
-
-print("\npre_data_dict keys:", list(pre_data_dict.keys()))
-
-# preprocess data
-preprocessor = Preprocessor(pre_data_dict, miss_val_threshold=0.01)
-data_dict = preprocessor.preprocess()
-
-print("processed keys:", list(data_dict.keys()))
-
-measuring_point = "HalfHourlyConsumption_HTA_2025-06-01_2025-07-01"
-
-if measuring_point not in data_dict:
-    raise KeyError(
-        f"{measuring_point!r} not found in processed data_dict. "
-        f"Available keys: {list(data_dict.keys())}"
-    )
-
-data_dict_temp = {measuring_point: data_dict[measuring_point]}
-mp_df = data_dict_temp[measuring_point]
-
-if mp_df.empty:
-    raise ValueError(f"{measuring_point!r} is empty after preprocessing.")
-
-print(f"\n{measuring_point} shape:", mp_df.shape)
-print("index range:", mp_df.index.min(), "to", mp_df.index.max())
-
 # statistic method
 anomalies_detected_dates = []
 
@@ -75,11 +6,11 @@ ad_detector = AutoAD(
     data_frequency=preprocessor.data_frequency,
     method="statistic",
     unit_of_measurement="Wh",
-    lookback_period=60
+    lookback_period=7
 )
 
-start_date = pd.Timestamp("2022-11-01")
-end_date = pd.Timestamp("2022-11-13")
+start_date = pd.Timestamp("2025-06-20")
+end_date = pd.Timestamp("2025-06-25")
 
 # align timezone if the index is tz-aware
 tz = mp_df.index[0].tz if len(mp_df.index) > 0 else None
@@ -105,6 +36,8 @@ while detection_date <= end_date:
             data_dict=data_dict_temp,
             detect_date=detection_date
         )
+
+        print("count:", getattr(ad_detector, "count", None))
 
         ad_detector.top_k(
             k=1,
