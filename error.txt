@@ -1,0 +1,31 @@
+Unexpected exception formatting exception. Falling back to standard exception
+Traceback (most recent call last):
+  File "/Users/pths2948/Library/Python/3.9/lib/python/site-packages/IPython/core/interactiveshell.py", line 3550, in run_code
+    exec(code_obj, self.user_global_ns, self.user_ns)
+  File "/var/folders/lc/8_8cqx012xb0x__pr3rryzy00000gp/T/ipykernel_87266/3680744690.py", line 6, in <module>
+    from ispots.anomaly_detector import AutoAD, Preprocessor
+  File "/Users/pths2948/iSPoTS/src/ispots/anomaly_detector/__init__.py", line 2, in <module>
+    from ispots.anomaly_detector.utils.change_deviation_tolerance import DeviationToleranceModifier
+  File "/Users/pths2948/iSPoTS/src/ispots/anomaly_detector/utils/change_deviation_tolerance.py", line 15, in <module>
+    from ispots.anomaly_detector.AutoAD import AutoAD
+  File "/Users/pths2948/iSPoTS/src/ispots/anomaly_detector/AutoAD.py", line 11, in <module>
+    from scipy import stats
+  File "<frozen importlib._bootstrap>", line 1055, in _handle_fromlist
+  File "/Users/pths2948/Library/Python/3.9/lib/python/site-packages/scipy/__init__.py", line 134, in __getattr__
+    return _importlib.import_module(f'scipy.{name}')
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/importlib/__init__.py", line 127, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+  File "/Users/pths2948/Library/Python/3.9/lib/python/site-packages/scipy/stats/__init__.py", line 606, in <module>
+    from ._stats_py import *
+  File "/Users/pths2948/Library/Python/3.9/lib/python/site-packages/scipy/stats/_stats_py.py", line 37, in <module>
+    from scipy import sparse
+  File "<frozen importlib._bootstrap>", line 1055, in _handle_fromlist
+  File "/Users/pths2948/Library/Python/3.9/lib/python/site-packages/scipy/__init__.py", line 134, in __getattr__
+    return _importlib.import_module(f'scipy.{name}')
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/importlib/__init__.py", line 127, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+...
+    return only(
+  File "/Users/pths2948/Library/Python/3.9/lib/python/site-packages/executing/executing.py", line 76, in only
+    raise NotOneValueFound('Expected one value, found 0')
+executing.executing.NotOneValueFound: Expected one value, found 0
