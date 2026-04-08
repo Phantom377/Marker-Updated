@@ -1,46 +1,27 @@
-measuring_point = "HalfHourlyConsumption_HTA_2025-06-01_2025-07-01"
+# load data into a dictionary
+path = os.path.abspath('./data/JC/electrical')
+csv_files = glob.glob(os.path.join(path, "*.csv"))
+pre_data_dict = {}
+for f in csv_files:
+    df = pd.read_csv(f)
+    pre_data_dict[f.split("/")[-1][:-4]] = df
+
+# preprocess data
+preprocessor = Preprocessor(pre_data_dict, miss_val_threshold = 0.01)
+data_dict = preprocessor.preprocess()
+
+measuring_point = 'dsta_blk-210-1-elect'
 data_dict_temp = {measuring_point: data_dict[measuring_point]}
 
-tz = data_dict_temp[measuring_point].index[0].tz
-print("tz:", tz)
+# statistic method
+anomalies_detected_dates = []
 
-ad_detector = AutoAD(
-    namespace="dsta-be28",
-    data_frequency=preprocessor.data_frequency,
-    method="statistic",
-    unit_of_measurement="Wh",
-    lookback_period=7
-)
+ad_detector = AutoAD(namespace = 'JC', data_frequency = preprocessor.data_frequency, method = 'statistic', unit_of_measurement='Wh', lookback_period=60)
 
-detection_date = pd.Timestamp("2025-06-17")
-end_date = pd.Timestamp("2025-06-17")
-
-if tz is not None:
-    detection_date = detection_date.tz_localize(tz)
-    end_date = end_date.tz_localize(tz)
-
-start_date = data_dict_temp[measuring_point].index.min()
-print("data starts at:", start_date)
-
-required_start = detection_date - pd.Timedelta(days=ad_detector.lookback_period)
-print("required history starts at:", required_start)
-
-if required_start < start_date:
-    raise ValueError(
-        f"Not enough data for lookback period={ad_detector.lookback_period}. "
-        f"Need data from {required_start}, but only have data from {start_date}."
-    )
-
-while detection_date <= end_date:
-    score_df_dict = ad_detector.detect(
-        data_dict=data_dict_temp,
-        detect_date=detection_date
-    )
-    ad_detector.top_k(
-        k=1,
-        sort_by="deviation_percentage",
-        report=True,
-        plot=True,
-        dev_perc_threshold=5
-    )
-    detection_date += pd.Timedelta(1, unit="d")
+detection_date = pd.to_datetime('2022-11-01')
+while detection_date <= pd.to_datetime('2022-11-13'):
+    score_df_dict = ad_detector.detect(data_dict = data_dict_temp, detect_date = detection_date)
+    ad_detector.top_k(k = 1, sort_by = 'deviation_percentage', report = True, plot = True, dev_perc_threshold = 5)
+    if ad_detector.count > 0:
+        anomalies_detected_dates.append(detection_date)
+    detection_date += pd.Timedelta(1, unit='d')
