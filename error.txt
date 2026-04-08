@@ -1,30 +1,9 @@
-Traceback (most recent call last):
+KeyError                                  Traceback (most recent call last)
+Cell In[7], line 18
+     15 data_dict = preprocessor.preprocess()
+     17 measuring_point = 'HalfHourlyConsumption_HTA_2025-06-01_2025-07-01'
+---> 18 data_dict_temp = {measuring_point: data_dict[measuring_point]}
+     19 tz = data_dict_temp[measuring_point].index[0].tz
+     21 # statistic method
 
-  Cell In[18], line 4
-    from scipy import stats
-
-  File <frozen importlib._bootstrap>:1055 in _handle_fromlist
-
-  File ~/Library/Python/3.9/lib/python/site-packages/scipy/__init__.py:134 in __getattr__
-    return _importlib.import_module(f'scipy.{name}')
-
-  File /Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/importlib/__init__.py:127 in import_module
-    return _bootstrap._gcd_import(name[level:], package, level)
-
-  File ~/Library/Python/3.9/lib/python/site-packages/scipy/stats/__init__.py:606
-    from ._stats_py import *
-
-  File ~/Library/Python/3.9/lib/python/site-packages/scipy/stats/_stats_py.py:37
-    from scipy import sparse
-
-  File <frozen importlib._bootstrap>:1055 in _handle_fromlist
-
-  File ~/Library/Python/3.9/lib/python/site-packages/scipy/__init__.py:134 in __getattr__
-    return _importlib.import_module(f'scipy.{name}')
-
-  File /Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/importlib/__init__.py:127 in import_module
-...
-
-  File ~/Library/Python/3.9/lib/python/site-packages/numpy/core/numerictypes.py:272 in obj2sctype
-
-NameError: name 'ndarray' is not defined
+KeyError: 'HalfHourlyConsumption_HTA_2025-06-01_2025-07-01'
