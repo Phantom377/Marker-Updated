@@ -1,9 +1,18 @@
-KeyError                                  Traceback (most recent call last)
-Cell In[7], line 18
-     15 data_dict = preprocessor.preprocess()
-     17 measuring_point = 'HalfHourlyConsumption_HTA_2025-06-01_2025-07-01'
----> 18 data_dict_temp = {measuring_point: data_dict[measuring_point]}
-     19 tz = data_dict_temp[measuring_point].index[0].tz
-     21 # statistic method
+path = os.path.abspath('./data')
+# testing/blk-119-elect-anomaly-20230829.csv
+# JC/water/dsta_blk-127-water.csv
+csv_files = glob.glob(os.path.join(path, "testing/HalfHourlyConsumption_HTA_2025-06-01_2025-07-01.csv"))
+pre_data_dict = {}
 
-KeyError: 'HalfHourlyConsumption_HTA_2025-06-01_2025-07-01'
+date_parser = lambda x: dateutil.parser.parse(x, ignoretz=True)
+for f in csv_files:
+    df = pd.read_csv(f, parse_dates=True, date_parser=date_parser)
+    pre_data_dict[f.split("/")[-1][:-4]] = df
+
+# preprocess data
+preprocessor = Preprocessor(pre_data_dict, miss_val_threshold = 0.01)
+data_dict = preprocessor.preprocess()
+
+measuring_point = 'HalfHourlyConsumption_HTA_2025-06-01_2025-07-01'
+data_dict_temp = {measuring_point: data_dict[measuring_point]}
+tz = data_dict_temp[measuring_point].index[0].tz
