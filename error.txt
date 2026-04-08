@@ -1,8 +1,11 @@
+# load data into a dictionary
 path = os.path.abspath('./data')
 # testing/blk-119-elect-anomaly-20230829.csv
 # JC/water/dsta_blk-127-water.csv
 csv_files = glob.glob(os.path.join(path, "testing/HalfHourlyConsumption_HTA_2025-06-01_2025-07-01.csv"))
 pre_data_dict = {}
+print(csv_files)
+print(df.columns.tolist())
 
 date_parser = lambda x: dateutil.parser.parse(x, ignoretz=True)
 for f in csv_files:
@@ -16,3 +19,14 @@ data_dict = preprocessor.preprocess()
 measuring_point = 'HalfHourlyConsumption_HTA_2025-06-01_2025-07-01'
 data_dict_temp = {measuring_point: data_dict[measuring_point]}
 tz = data_dict_temp[measuring_point].index[0].tz
+
+# statistic method
+anomalies_detected_dates = []
+
+ad_detector = AutoAD(namespace = 'dsta-be28', data_frequency = preprocessor.data_frequency, method = 'statistic', unit_of_measurement='Wh', lookback_period=30)
+
+detection_date = pd.Timestamp('2023-9-17', tz=tz)
+while detection_date <= pd.Timestamp('2023-9-17', tz=tz):
+    score_df_dict = ad_detector.detect(data_dict = data_dict_temp, detect_date = detection_date)
+    ad_detector.top_k(k = 1, sort_by = 'deviation_percentage', report = True, plot = True, dev_perc_threshold = 5)
+    detection_date += pd.Timedelta(1, unit='d')
