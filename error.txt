@@ -1,12 +1,10 @@
-import os
-import glob
-import pandas as pd
-
 # load data into a dictionary
-path = os.path.abspath("./data/JC/electrical")
-csv_files = glob.glob(os.path.join(path, "*.csv"))
+path = os.path.abspath("./data")
+csv_files = glob.glob(os.path.join(path, "testing", "HalfHourlyConsumption_HTA_2025-06-01_2025-07-01.csv"))
 pre_data_dict = {}
 
+%matplotlib inline
+import matplotlib.pyplot as plt
 print("csv files found:", len(csv_files))
 
 for f in csv_files:
@@ -52,7 +50,7 @@ data_dict = preprocessor.preprocess()
 
 print("processed keys:", list(data_dict.keys()))
 
-measuring_point = "dsta_blk-210-1-elect"
+measuring_point = "HalfHourlyConsumption_HTA_2025-06-01_2025-07-01"
 
 if measuring_point not in data_dict:
     raise KeyError(
@@ -113,8 +111,9 @@ while detection_date <= end_date:
             sort_by="deviation_percentage",
             report=True,
             plot=True,
-            dev_perc_threshold=5
+            dev_perc_threshold=0
         )
+        plt.show()
 
         if getattr(ad_detector, "count", 0) > 0:
             anomalies_detected_dates.append(detection_date)
