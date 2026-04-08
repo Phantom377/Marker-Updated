@@ -1,27 +1,129 @@
+import os
+import glob
+import pandas as pd
+
 # load data into a dictionary
-path = os.path.abspath('./data/JC/electrical')
+path = os.path.abspath("./data/JC/electrical")
 csv_files = glob.glob(os.path.join(path, "*.csv"))
 pre_data_dict = {}
+
+print("csv files found:", len(csv_files))
+
 for f in csv_files:
     df = pd.read_csv(f)
-    pre_data_dict[f.split("/")[-1][:-4]] = df
+    print(f"\nLoading: {os.path.basename(f)}")
+    print("Original columns:", df.columns.tolist())
+
+    # ---- normalize column names to what Preprocessor expects ----
+    # adjust these mappings if your files use different names
+    rename_map = {}
+
+    if "Date" in df.columns:
+        rename_map["Date"] = "Time"
+    elif "Datetime" in df.columns:
+        rename_map["Datetime"] = "Time"
+    elif "Timestamp" in df.columns:
+        rename_map["Timestamp"] = "Time"
+
+    if "Value" not in df.columns:
+        # pick the first non-time column as Value if needed
+        non_time_cols = [c for c in df.columns if c not in ["Date", "Datetime", "Timestamp", "Time"]]
+        if len(non_time_cols) == 1:
+            rename_map[non_time_cols[0]] = "Value"
+
+    df = df.rename(columns=rename_map)
+
+    if "Time" not in df.columns or "Value" not in df.columns:
+        print(f"Skipping {os.path.basename(f)}: could not identify Time/Value columns")
+        continue
+
+    df["Time"] = pd.to_datetime(df["Time"], errors="coerce")
+    df["Value"] = pd.to_numeric(df["Value"], errors="coerce")
+    df = df.dropna(subset=["Time"])
+
+    key = os.path.basename(f)[:-4]
+    pre_data_dict[key] = df[["Time", "Value"]]
+
+print("\npre_data_dict keys:", list(pre_data_dict.keys()))
 
 # preprocess data
-preprocessor = Preprocessor(pre_data_dict, miss_val_threshold = 0.01)
+preprocessor = Preprocessor(pre_data_dict, miss_val_threshold=0.01)
 data_dict = preprocessor.preprocess()
 
-measuring_point = 'dsta_blk-210-1-elect'
+print("processed keys:", list(data_dict.keys()))
+
+measuring_point = "dsta_blk-210-1-elect"
+
+if measuring_point not in data_dict:
+    raise KeyError(
+        f"{measuring_point!r} not found in processed data_dict. "
+        f"Available keys: {list(data_dict.keys())}"
+    )
+
 data_dict_temp = {measuring_point: data_dict[measuring_point]}
+mp_df = data_dict_temp[measuring_point]
+
+if mp_df.empty:
+    raise ValueError(f"{measuring_point!r} is empty after preprocessing.")
+
+print(f"\n{measuring_point} shape:", mp_df.shape)
+print("index range:", mp_df.index.min(), "to", mp_df.index.max())
 
 # statistic method
 anomalies_detected_dates = []
 
-ad_detector = AutoAD(namespace = 'JC', data_frequency = preprocessor.data_frequency, method = 'statistic', unit_of_measurement='Wh', lookback_period=60)
+ad_detector = AutoAD(
+    namespace="JC",
+    data_frequency=preprocessor.data_frequency,
+    method="statistic",
+    unit_of_measurement="Wh",
+    lookback_period=60
+)
 
-detection_date = pd.to_datetime('2022-11-01')
-while detection_date <= pd.to_datetime('2022-11-13'):
-    score_df_dict = ad_detector.detect(data_dict = data_dict_temp, detect_date = detection_date)
-    ad_detector.top_k(k = 1, sort_by = 'deviation_percentage', report = True, plot = True, dev_perc_threshold = 5)
-    if ad_detector.count > 0:
-        anomalies_detected_dates.append(detection_date)
-    detection_date += pd.Timedelta(1, unit='d')
+start_date = pd.Timestamp("2022-11-01")
+end_date = pd.Timestamp("2022-11-13")
+
+# align timezone if the index is tz-aware
+tz = mp_df.index[0].tz if len(mp_df.index) > 0 else None
+if tz is not None:
+    start_date = start_date.tz_localize(tz)
+    end_date = end_date.tz_localize(tz)
+
+detection_date = start_date
+
+while detection_date <= end_date:
+    hist_start = detection_date - pd.Timedelta(days=ad_detector.lookback_period)
+    hist_df = mp_df.loc[(mp_df.index >= hist_start) & (mp_df.index <= detection_date)]
+
+    print(f"\nChecking {detection_date.date()} | lookback window rows: {len(hist_df)}")
+
+    if hist_df.empty:
+        print(f"Skipping {detection_date.date()}: no data in lookback window")
+        detection_date += pd.Timedelta(days=1)
+        continue
+
+    try:
+        score_df_dict = ad_detector.detect(
+            data_dict=data_dict_temp,
+            detect_date=detection_date
+        )
+
+        ad_detector.top_k(
+            k=1,
+            sort_by="deviation_percentage",
+            report=True,
+            plot=True,
+            dev_perc_threshold=5
+        )
+
+        if getattr(ad_detector, "count", 0) > 0:
+            anomalies_detected_dates.append(detection_date)
+
+    except Exception as e:
+        print(f"Detection failed for {detection_date.date()}: {e}")
+
+    detection_date += pd.Timedelta(days=1)
+
+print("\nAnomalies detected on:")
+for d in anomalies_detected_dates:
+    print(d)
