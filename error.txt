@@ -1,61 +1,42 @@
-# statistic method
-anomalies_detected_dates = []
+raceback (most recent call last):
+  File "/Users/pths2948/Marker-Updated/.venv/lib/python3.9/site-packages/pydantic/_internal/_typing_extra.py", line 492, in _eval_type_backport
+    return _eval_type(value, globalns, localns, type_params)
+  File "/Users/pths2948/Marker-Updated/.venv/lib/python3.9/site-packages/pydantic/_internal/_typing_extra.py", line 545, in _eval_type
+    return typing._eval_type(  # type: ignore
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/typing.py", line 290, in _eval_type
+    return t._evaluate(globalns, localns, recursive_guard)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/typing.py", line 546, in _evaluate
+    eval(self.__forward_code__, globalns, localns),
+  File "<string>", line 1, in <module>
+TypeError: unsupported operand type(s) for |: '_GenericAlias' and 'NoneType'
 
-ad_detector = AutoAD(
-    namespace="JC",
-    data_frequency=preprocessor.data_frequency,
-    method="statistic",
-    unit_of_measurement="Wh",
-    lookback_period=7
-)
+The above exception was the direct cause of the following exception:
 
-start_date = pd.Timestamp("2025-06-20")
-end_date = pd.Timestamp("2025-06-25")
-
-# align timezone if the index is tz-aware
-tz = mp_df.index[0].tz if len(mp_df.index) > 0 else None
-if tz is not None:
-    start_date = start_date.tz_localize(tz)
-    end_date = end_date.tz_localize(tz)
-
-detection_date = start_date
-
-while detection_date <= end_date:
-    hist_start = detection_date - pd.Timedelta(days=ad_detector.lookback_period)
-    hist_df = mp_df.loc[(mp_df.index >= hist_start) & (mp_df.index <= detection_date)]
-
-    print(f"\nChecking {detection_date.date()} | lookback window rows: {len(hist_df)}")
-
-    if hist_df.empty:
-        print(f"Skipping {detection_date.date()}: no data in lookback window")
-        detection_date += pd.Timedelta(days=1)
-        continue
-
-    try:
-        score_df_dict = ad_detector.detect(
-            data_dict=data_dict_temp,
-            detect_date=detection_date
-        )
-
-        print("count:", getattr(ad_detector, "count", None))
-
-        ad_detector.top_k(
-            k=1,
-            sort_by="deviation_percentage",
-            report=True,
-            plot=True,
-            dev_perc_threshold=0
-        )
-        plt.show()
-
-        if getattr(ad_detector, "count", 0) > 0:
-            anomalies_detected_dates.append(detection_date)
-
-    except Exception as e:
-        print(f"Detection failed for {detection_date.date()}: {e}")
-
-    detection_date += pd.Timedelta(days=1)
-
-print("\nAnomalies detected on:")
-for d in anomalies_detected_dates:
-    print(d)
+Traceback (most recent call last):
+  File "/Users/pths2948/Marker-Updated/main_fixed.py", line 4, in <module>
+    from marker.converters.pdf import PdfConverter
+  File "/Users/pths2948/Marker-Updated/marker/converters/__init__.py", line 6, in <module>
+    from marker.processors import BaseProcessor
+  File "/Users/pths2948/Marker-Updated/marker/processors/__init__.py", line 6, in <module>
+    from marker.schema.document import Document
+  File "/Users/pths2948/Marker-Updated/marker/schema/document.py", line 8, in <module>
+    from marker.schema.blocks import Block, BlockId, BlockOutput
+  File "/Users/pths2948/Marker-Updated/marker/schema/blocks/__init__.py", line 3, in <module>
+    from marker.schema.blocks.base import Block, BlockId, BlockOutput
+  File "/Users/pths2948/Marker-Updated/marker/schema/blocks/base.py", line 33, in <module>
+    class BlockOutput(BaseModel):
+  File "/Users/pths2948/Marker-Updated/.venv/lib/python3.9/site-packages/pydantic/_internal/_model_construction.py", line 242, in __new__
+    set_model_fields(cls, config_wrapper=config_wrapper, ns_resolver=ns_resolver)
+  File "/Users/pths2948/Marker-Updated/.venv/lib/python3.9/site-packages/pydantic/_internal/_model_construction.py", line 566, in set_model_fields
+    fields, class_vars = collect_model_fields(cls, config_wrapper, ns_resolver, typevars_map=typevars_map)
+  File "/Users/pths2948/Marker-Updated/.venv/lib/python3.9/site-packages/pydantic/_internal/_fields.py", line 256, in collect_model_fields
+    type_hints = _typing_extra.get_model_type_hints(cls, ns_resolver=ns_resolver)
+  File "/Users/pths2948/Marker-Updated/.venv/lib/python3.9/site-packages/pydantic/_internal/_typing_extra.py", line 350, in get_model_type_hints
+    hints[name] = try_eval_type(value, globalns, localns)
+  File "/Users/pths2948/Marker-Updated/.venv/lib/python3.9/site-packages/pydantic/_internal/_typing_extra.py", line 404, in try_eval_type
+    return eval_type_backport(value, globalns, localns), True
+  File "/Users/pths2948/Marker-Updated/.venv/lib/python3.9/site-packages/pydantic/_internal/_typing_extra.py", line 455, in eval_type_backport
+    return _eval_type_backport(value, globalns, localns, type_params)
+  File "/Users/pths2948/Marker-Updated/.venv/lib/python3.9/site-packages/pydantic/_internal/_typing_extra.py", line 500, in _eval_type_backport
+    raise TypeError(
+TypeError: Unable to evaluate type annotation 'List[BlockOutput] | None'. If you are making use of the new typing syntax (unions using `|` since Python 3.10 or builtins subscripting since Python 3.9), you should either replace the use of new syntax with the existing `typing` constructs or install the `eval_type_backport` package.
