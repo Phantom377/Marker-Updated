@@ -1,41 +1,35 @@
-Traceback (most recent call last):
-  File "/Users/pths2948/iSPoTS/.venv/lib/python3.9/site-packages/pydantic/_internal/_typing_extra.py", line 492, in _eval_type_backport
-    return _eval_type(value, globalns, localns, type_params)
-  File "/Users/pths2948/iSPoTS/.venv/lib/python3.9/site-packages/pydantic/_internal/_typing_extra.py", line 545, in _eval_type
-    return typing._eval_type(  # type: ignore
-  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/typing.py", line 290, in _eval_type
-    return t._evaluate(globalns, localns, recursive_guard)
-  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/typing.py", line 546, in _evaluate
-    eval(self.__forward_code__, globalns, localns),
-  File "<string>", line 1, in <module>
-TypeError: unsupported operand type(s) for |: 'EnumMeta' and 'NoneType'
+url = "https://ai-gateway.qa.in.spdigital.sg/ai-search"
 
-The above exception was the direct cause of the following exception:
+headers = {
+    'Content-Type': 'application/json',
+    'model': 'openai',
+    'subModel': 'text-embedding-3-large',
+    'client-id': 'a3f7b27d767940f8be5f72779912fe03',
+    'client-secret': '2366CCd77d964e82831f5E251678C0Cf',
+    'project': 'HRBuddy',
+    'vector-index': 'spl_hr_buddy_sap'
+}
+print(required_sap_fields)
+payload = json.dumps({
+    "query": "ESP567E",
+    "searchType": "vector",
+    "vector": {
+        "kind": "vector",
+        "fields": f"user_name_vector, {required_sap_fields}",
+        "k": 3,
+        "exhaustive": True,
+        "select": "user_name",
+        "top": 1
+    }
+})
 
-Traceback (most recent call last):
-  File "<string>", line 1, in <module>
-  File "/Users/pths2948/Marker-Updated/marker/converters/__init__.py", line 6, in <module>
-    from marker.processors import BaseProcessor
-  File "/Users/pths2948/Marker-Updated/marker/processors/__init__.py", line 6, in <module>
-    from marker.schema.document import Document
-  File "/Users/pths2948/Marker-Updated/marker/schema/document.py", line 8, in <module>
-    from marker.schema.blocks import Block, BlockId, BlockOutput
-  File "/Users/pths2948/Marker-Updated/marker/schema/blocks/__init__.py", line 3, in <module>
-    from marker.schema.blocks.base import Block, BlockId, BlockOutput
-  File "/Users/pths2948/Marker-Updated/marker/schema/blocks/base.py", line 41, in <module>
-    class BlockId(BaseModel):
-  File "/Users/pths2948/iSPoTS/.venv/lib/python3.9/site-packages/pydantic/_internal/_model_construction.py", line 242, in __new__
-    set_model_fields(cls, config_wrapper=config_wrapper, ns_resolver=ns_resolver)
-  File "/Users/pths2948/iSPoTS/.venv/lib/python3.9/site-packages/pydantic/_internal/_model_construction.py", line 566, in set_model_fields
-    fields, class_vars = collect_model_fields(cls, config_wrapper, ns_resolver, typevars_map=typevars_map)
-  File "/Users/pths2948/iSPoTS/.venv/lib/python3.9/site-packages/pydantic/_internal/_fields.py", line 256, in collect_model_fields
-    type_hints = _typing_extra.get_model_type_hints(cls, ns_resolver=ns_resolver)
-  File "/Users/pths2948/iSPoTS/.venv/lib/python3.9/site-packages/pydantic/_internal/_typing_extra.py", line 350, in get_model_type_hints
-    hints[name] = try_eval_type(value, globalns, localns)
-  File "/Users/pths2948/iSPoTS/.venv/lib/python3.9/site-packages/pydantic/_internal/_typing_extra.py", line 404, in try_eval_type
-    return eval_type_backport(value, globalns, localns), True
-  File "/Users/pths2948/iSPoTS/.venv/lib/python3.9/site-packages/pydantic/_internal/_typing_extra.py", line 455, in eval_type_backport
-    return _eval_type_backport(value, globalns, localns, type_params)
-  File "/Users/pths2948/iSPoTS/.venv/lib/python3.9/site-packages/pydantic/_internal/_typing_extra.py", line 500, in _eval_type_backport
-    raise TypeError(
-TypeError: Unable to evaluate type annotation 'BlockTypes | None'. If you are making use of the new typing syntax (unions using `|` since Python 3.10 or builtins subscripting since Python 3.9), you should either replace the use of new syntax with the existing `typing` constructs or install the `eval_type_backport` package.
+response = requests.request("POST", url, headers=headers, data=payload)
+
+if response.status_code != 200:
+    print("error {}".format(response.status_code))
+    print(response.text)
+
+result = response.json()
+search_result = result['value']
+search_result
+
