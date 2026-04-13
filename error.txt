@@ -1,33 +1,18 @@
-error 500
-HTTP POST on resource 'https://srch-qa-aicoe-001.search.windows.net:443/indexes/spl_hr_buddy_sap/docs/search?api-version=2023-11-01' failed: bad request (400).
----------------------------------------------------------------------------
-JSONDecodeError                           Traceback (most recent call last)
-File ~/hr-chatbot/.venv/lib/python3.9/site-packages/requests/models.py:976, in Response.json(self, **kwargs)
-    975 try:
---> 976     return complexjson.loads(self.text, **kwargs)
-    977 except JSONDecodeError as e:
-    978     # Catch JSON-related errors and raise as requests.JSONDecodeError
-    979     # This aliases json.JSONDecodeError and simplejson.JSONDecodeError
+from cryptography.fernet import Fernet
 
-File /Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/json/__init__.py:346, in loads(s, cls, object_hook, parse_float, parse_int, parse_constant, object_pairs_hook, **kw)
-    343 if (cls is None and object_hook is None and
-    344         parse_int is None and parse_float is None and
-    345         parse_constant is None and object_pairs_hook is None and not kw):
---> 346     return _default_decoder.decode(s)
-    347 if cls is None:
+# this will be the same key used for encrypting and decrypting the data in QA
+SAP_DATA_KEY = ""
+fernet = Fernet(SAP_DATA_KEY.encode())
 
-File /Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/json/decoder.py:337, in JSONDecoder.decode(self, s, _w)
-    333 """Return the Python representation of ``s`` (a ``str`` instance
-    334 containing a JSON document).
-    335 
-    336 """
---> 337 obj, end = self.raw_decode(s, idx=_w(s, 0).end())
-    338 end = _w(s, end).end()
+def decrypt_value(fernet, value):
+    if value is None or value == "":
+        return ""
+    return fernet.decrypt(value.encode()).decode()
 
-File /Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/json/decoder.py:355, in JSONDecoder.raw_decode(self, s, idx)
-...
-    978     # Catch JSON-related errors and raise as requests.JSONDecodeError
-    979     # This aliases json.JSONDecodeError and simplejson.JSONDecodeError
---> 980     raise RequestsJSONDecodeError(e.msg, e.doc, e.pos)
+fields_to_decrypt = ["full_name", "person_id", "email_address", "user_name", "generic_role", "employee_sub_group"]
+decrypted_results = []
+for doc in search_result:
+    decrypted = {f: decrypt_value(fernet, doc.get(f)) for f in fields_to_decrypt}
+    decrypted_results.append(decrypted)
 
-JSONDecodeError: Expecting value: line 1 column 1 (char 0)
+decrypted_results
