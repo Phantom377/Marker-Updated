@@ -1,35 +1,30 @@
-url = "https://ai-gateway.qa.in.spdigital.sg/ai-search"
+gaierror                                  Traceback (most recent call last)
+File ~/hr-chatbot/.venv/lib/python3.9/site-packages/urllib3/connection.py:204, in HTTPConnection._new_conn(self)
+    203 try:
+--> 204     sock = connection.create_connection(
+    205         (self._dns_host, self.port),
+    206         self.timeout,
+    207         source_address=self.source_address,
+    208         socket_options=self.socket_options,
+    209     )
+    210 except socket.gaierror as e:
 
-headers = {
-    'Content-Type': 'application/json',
-    'model': 'openai',
-    'subModel': 'text-embedding-3-large',
-    'client-id': 'a3f7b27d767940f8be5f72779912fe03',
-    'client-secret': '2366CCd77d964e82831f5E251678C0Cf',
-    'project': 'HRBuddy',
-    'vector-index': 'spl_hr_buddy_sap'
-}
-print(required_sap_fields)
-payload = json.dumps({
-    "query": "ESP567E",
-    "searchType": "vector",
-    "vector": {
-        "kind": "vector",
-        "fields": "user_name_vector, " + ", ".join(f"{field}_vector" for field in required_sap_fields),
-        "k": 3,
-        "exhaustive": True,
-        "select": "user_name",
-        "top": 1
-    }
-})
+File ~/hr-chatbot/.venv/lib/python3.9/site-packages/urllib3/util/connection.py:60, in create_connection(address, timeout, source_address, socket_options)
+     58     raise LocationParseError(f"'{host}', label empty or too long") from None
+---> 60 for res in socket.getaddrinfo(host, port, family, socket.SOCK_STREAM):
+     61     af, socktype, proto, canonname, sa = res
 
-response = requests.request("POST", url, headers=headers, data=payload)
+File /Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/socket.py:953, in getaddrinfo(host, port, family, type, proto, flags)
+    952 addrlist = []
+--> 953 for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+    954     af, socktype, proto, canonname, sa = res
 
-if response.status_code != 200:
-    print("error {}".format(response.status_code))
-    print(response.text)
+gaierror: [Errno 8] nodename nor servname provided, or not known
 
-result = response.json()
-search_result = result['value']
-search_result
+The above exception was the direct cause of the following exception:
+...
+--> 677     raise ConnectionError(e, request=request)
+    679 except ClosedPoolError as e:
+    680     raise ConnectionError(e, request=request)
 
+ConnectionError: HTTPSConnectionPool(host='ai-gateway.qa.in.spdigital.sg', port=443): Max retries exceeded with url: /ai-search (Caused by NameResolutionError("HTTPSConnection(host='ai-gateway.qa.in.spdigital.sg', port=443): Failed to resolve 'ai-gateway.qa.in.spdigital.sg' ([Errno 8] nodename nor servname provided, or not known)"))
