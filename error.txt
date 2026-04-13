@@ -15,7 +15,7 @@ payload = json.dumps({
     "searchType": "vector",
     "vector": {
         "kind": "vector",
-        "fields": f"user_name_vector, {required_sap_fields}",
+        "fields": "user_name_vector, " + ", ".join(f"{field}_vector" for field in required_sap_fields),
         "k": 3,
         "exhaustive": True,
         "select": "user_name",
