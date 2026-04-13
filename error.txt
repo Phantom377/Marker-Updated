@@ -1,34 +1,33 @@
-url = "https://ai-gateway.qa.in.spdigital.sg/ai-search"
+error 500
+HTTP POST on resource 'https://srch-qa-aicoe-001.search.windows.net:443/indexes/spl_hr_buddy_sap/docs/search?api-version=2023-11-01' failed: bad request (400).
+---------------------------------------------------------------------------
+JSONDecodeError                           Traceback (most recent call last)
+File ~/hr-chatbot/.venv/lib/python3.9/site-packages/requests/models.py:976, in Response.json(self, **kwargs)
+    975 try:
+--> 976     return complexjson.loads(self.text, **kwargs)
+    977 except JSONDecodeError as e:
+    978     # Catch JSON-related errors and raise as requests.JSONDecodeError
+    979     # This aliases json.JSONDecodeError and simplejson.JSONDecodeError
 
-headers = {
-    'Content-Type': 'application/json',
-    'model': 'openai',
-    'subModel': 'text-embedding-3-large',
-    'client-id': 'a3f7b27d767940f8be5f72779912fe03',
-    'client-secret': '2366CCd77d964e82831f5E251678C0Cf',
-    'project': 'HRBuddy',
-    'vector-index': 'spl_hr_buddy_sap'
-}
+File /Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/json/__init__.py:346, in loads(s, cls, object_hook, parse_float, parse_int, parse_constant, object_pairs_hook, **kw)
+    343 if (cls is None and object_hook is None and
+    344         parse_int is None and parse_float is None and
+    345         parse_constant is None and object_pairs_hook is None and not kw):
+--> 346     return _default_decoder.decode(s)
+    347 if cls is None:
 
-payload = json.dumps({
-    "query": "ESP567E",
-    "searchType": "vector",
-    "vector": {
-        "kind": "vector",
-        "fields": "user_name_vector",
-        "k": 3,
-        "exhaustive": True,
-        "select": "user_name, generic_role, employee_sub_group",
-        "top": 1
-    }
-})
+File /Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/json/decoder.py:337, in JSONDecoder.decode(self, s, _w)
+    333 """Return the Python representation of ``s`` (a ``str`` instance
+    334 containing a JSON document).
+    335 
+    336 """
+--> 337 obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+    338 end = _w(s, end).end()
 
-response = requests.request("POST", url, headers=headers, data=payload)
+File /Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/json/decoder.py:355, in JSONDecoder.raw_decode(self, s, idx)
+...
+    978     # Catch JSON-related errors and raise as requests.JSONDecodeError
+    979     # This aliases json.JSONDecodeError and simplejson.JSONDecodeError
+--> 980     raise RequestsJSONDecodeError(e.msg, e.doc, e.pos)
 
-if response.status_code != 200:
-    print("error {}".format(response.status_code))
-    print(response.text)
-
-result = response.json()
-search_result = result['value'] 
-search_result
+JSONDecodeError: Expecting value: line 1 column 1 (char 0)
