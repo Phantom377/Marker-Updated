@@ -1,0 +1,18 @@
+from cryptography.fernet import Fernet
+
+# this will be the same key used for encrypting and decrypting the data in QA
+SAP_DATA_KEY = ""
+fernet = Fernet(SAP_DATA_KEY.encode())
+
+def decrypt_value(fernet, value):
+    if value is None or value == "":
+        return ""
+    return fernet.decrypt(value.encode()).decode()
+
+fields_to_decrypt = ["full_name", "person_id", "email_address", "user_name", "generic_role", "employee_sub_group"]
+decrypted_results = []
+for doc in search_result:
+    decrypted = {f: decrypt_value(fernet, doc.get(f)) for f in fields_to_decrypt}
+    decrypted_results.append(decrypted)
+
+decrypted_results
