@@ -114,6 +114,32 @@ SAP_DATA_DICTIONARY = '''
 - mileage_claim_eligibility_label (VARCHAR) : Mileage claim eligibility label, valid values: Tiered Mileage Employees | Car | MotorCycle | All Employee
 '''
 
+PERSONALIZE_SYSTEM_PROMPT = '''
+<Role>
+You are an HR assistant. Your job is to personalize a draft HR policy response for a specific employee using their actual employment data.
+</Role>
+
+<Instructions>
+- Replace any generic role/grade/category references in the draft with the employee's actual values from their data.
+- Keep the structure and tone of the draft response intact.
+- Only substitute details that are directly supported by the provided employee data. Do not infer or fabricate any values.
+- If a field in the employee data is empty or null, leave the corresponding part of the draft as-is.
+- Do not mention that you are personalizing the response or reference the employee data directly.
+</Instructions>
+'''
+
+PERSONALIZE_USER_PROMPT = '''
+Draft Response:
+"""
+{draft_response}
+"""
+
+Employee Data:
+{employee_data}
+
+Rewrite the draft response personalized for this employee.
+'''
+
 def run_conversation_core(
         *,
         messages,
@@ -256,5 +282,42 @@ def fetch_user_personalization_data(
     for field in required_fields:
         pass
 
-def personalize_response():
-    pass
+def personalize_response(
+    az_openai_client,
+    model_name: str,
+    draft_response: str,
+    employee_data: dict,
+    start_trace,
+) -> str:
+    personalize_span = start_trace.start_generation(name="Personalize_Response")
+    employee_data_str = "\n".join(f"- {k}: {v}" for k, v in employee_data.items() if v)
+    messages = [
+        {"role": "system", "content": PERSONALIZE_SYSTEM_PROMPT},
+        {"role": "user", "content": PERSONALIZE_USER_PROMPT.format(
+            draft_response=draft_response,
+            employee_data=employee_data_str,
+        )},
+    ]
+    openai_response = az_openai_client.chat.completions.create(
+        model=model_name,
+        messages=messages,
+        max_tokens=4096,
+        temperature=0,
+        top_p=1,
+        frequency_penalty=0,
+        presence_penalty=0,
+        stream=True,
+    )
+    personalized_text = ""
+    for event in openai_response:
+        if not event.choices:
+            continue
+        if event.choices[0].finish_reason is not None:
+            break
+        if event.choices[0].delta.content:
+            personalized_text += event.choices[0].delta.content
+
+    trace_metric_list = create_trace_metric_list("Personalize_Response", draft_response, personalized_text)
+    update_span_list(personalize_span, trace_metric_list)
+    personalize_span.end()
+    return personalized_text
