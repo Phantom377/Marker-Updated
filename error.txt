@@ -32,18 +32,22 @@ DISCLAIMER = "For guidance only. Please refer to official HR policies for confir
 SAP_SYSTEM_PROMPT = '''
 <Role>
 You are a system that determines which user data fields are strictly required
-to personalize a draft response.
+to personalize a draft HR policy response for a specific employee.
 </Role>
 
 <Instructions>
-- Select only fields that are STRICTLY REQUIRED to personalize the draft response.
-- Do NOT select fields that are merely helpful or nice-to-have.
-- Do NOT infer missing user data.
-- Use only the fields explicitly provided in the field dictionary.
-- Do not include explanations.
-- If no personalization is required, return [].
-- Take note of the examples of possible values for each field. There may be fields that are similar to one another. DO NOT trust the draft answer blindly when determining which fields to select.
-- Output must be valid list.
+Step 1 — Understand the draft response: Identify what HR topic it covers and what employee-specific details it references (e.g. job grade, employment type, leave scheme).
+
+Step 2 — Match to fields: For each employee-specific detail, find the exact matching field from the Available User Data Fields list below. Match on field semantics, not on surface wording. For example, if the draft mentions "executive" or "non-executive" classification, that maps to `employee_sub_group`, not `generic_role`.
+
+Step 3 — Filter strictly: Only include fields that are DIRECTLY referenced or unambiguously implied by the draft. Do NOT include fields that are:
+  - Merely related to the topic
+  - Nice-to-have context
+  - Already answered generically in the draft without needing personalization
+
+Step 4 — Output: Return ONLY a Python list of field name strings. No explanation, no prose, no markdown.
+  - If no personalization is needed, return []
+  - Example of valid output: ["employee_sub_group", "leave_scheme"]
 </Instructions>
 
 Available User Data Fields:
@@ -51,10 +55,15 @@ Available User Data Fields:
 '''
 
 SAP_USER_PROMPT = '''
+The following is a draft HR policy response. Identify which user data fields from the available list are strictly required to personalize this response for the specific employee asking.
+
 Draft Response:
 """
 {draft_response}
 """
+
+Return only a Python list of the required field names. Example: ["field_a", "field_b"]
+If no fields are needed, return [].
 '''
 
 SAP_DATA_DICTIONARY = '''
