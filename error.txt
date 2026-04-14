@@ -1,7 +1,236 @@
+import sys, os
+from pathlib import Path
+import requests
+import json
+from openai import OpenAI
+
+# Updates span with default args
+def update_span_list(span,trace_metric_list):
+    span.update(
+        input= trace_metric_list['input'],
+        output= trace_metric_list['output'],
+        model = trace_metric_list['model'],
+        metadata = trace_metric_list['metadata'],
+    )
+    
+# Get project root (adjust if needed)
+PROJECT_ROOT = Path.cwd().parent
+
+# Add src/ to Python path
+sys.path.insert(0, str(PROJECT_ROOT / "src"))
+sys.path.insert(0, str(PROJECT_ROOT / "src" / "server"))
+
+#sys.path.insert(0, str(Path.cwd().parent))
+
+import server.chat.llm_core as llm_core
+from server.model_source.config import Config
+from openai import AzureOpenAI
+from langfuse import get_client
+from server.model_source.modules.prompts import get_prompt_template
+
+import server.model_source.dcc_ai_search as dcc_ai_search
+
+import importlib
+importlib.reload(llm_core)
+importlib.reload(dcc_ai_search)
+
+
+
+query = "I am going to have my first child soon. What leave can I get?"
+
+system_content = get_prompt_template('SYS_PROMPT')
+conversation_id = 777
+user_id = 'dev_testing_ipynb'
+
+config = Config()
+os.environ["LANGFUSE_PUBLIC_KEY"] = config.get('tracing','LANGFUSE_PUBLIC_KEY')
+os.environ["LANGFUSE_SECRET_KEY"] = config.get('tracing','LANGFUSE_SECRET_KEY')
+os.environ["LANGFUSE_HOST"] = config.get('tracing','LANGFUSE_HOST')
+lf = get_client()
+
+with lf.start_as_current_observation(
+    as_type="span",
+    name="QnA"
+) as start_trace:
+
+    az_openai_client = AzureOpenAI(
+        api_key=config.config['AZURE_OPENAI_API_KEY'],
+        api_version=config.get('models','AZURE_OPENAI_API_VERSION'),
+        azure_endpoint=config.get('models','AZURE_OPENAI_ENDPOINT'),
+    )
+
+    events = list(llm_core.run_conversation_core(
+        messages={"messages":[{"role": "system", "content": system_content}, {"role": "user", "content": query}]},
+        system_content=system_content,
+    ))
+
+    completion_text = ''
+    for event in events:
+        if event[0] == "chunk":
+            completion_text += event[1]
+
+        elif event[0] == "done":
+            _, trace_metric_list, doc_dict = event[1:]
+
+        else:
+            required_sap_fields = event
+
+# update_span_list(start_trace, trace_metric_list)
+    start_trace.update_trace(
+        input=query,
+        output=completion_text,
+        session_id=f"cnv-{conversation_id}",
+        user_id=user_id
+    )
+
+# start_trace.end()
+    lf.flush()
+    print(completion_text)
+    
+    import server.chat.llm_core as llm_core
+from server.model_source.config import Config
+from openai import AzureOpenAI
+from langfuse import get_client
+from server.model_source.modules.prompts import get_prompt_template
+
+import importlib
+importlib.reload(llm_core)
+
+draft_response = """Certainly! Here's the information on hospital ward eligibility based on generic_role and employee_sub_group under the Comprehensive Co-Payment Scheme (CCS):
+
+- **Executives**: Eligible for Class A ward.  
+- **Non-executives on T2, C2**: Eligible for Class B1 and B2+ wards.  
+- **Non-executives on T3, C3**: Eligible for Class B2 ward.  
+- **Non-executives on C4, Workmen/Artisan**: Eligible for Class C ward.
+
+Explanation:  
+* The ward eligibility is determined by the employee's job grade and applies to both the employee and their dependants [Ref 1].  
+
+Would you like to know more about co-payment rates or other inpatient benefits? 😊
+"""
+
+system_content = get_prompt_template('SYS_PROMPT')
+conversation_id = 777
+user_id = 'dev_testing_ipynb'
+
+config = Config()
+os.environ["LANGFUSE_PUBLIC_KEY"] = config.get('tracing','LANGFUSE_PUBLIC_KEY')
+os.environ["LANGFUSE_SECRET_KEY"] = config.get('tracing','LANGFUSE_SECRET_KEY')
+os.environ["LANGFUSE_HOST"] = config.get('tracing','LANGFUSE_HOST')
+lf = get_client()
+start_trace = lf.start_span(name="required_sap_fields")
+
+az_openai_client = AzureOpenAI(
+    api_key=config.config['AZURE_OPENAI_API_KEY'],
+    api_version=config.get('models','AZURE_OPENAI_API_VERSION'),
+    azure_endpoint=config.get('models','AZURE_OPENAI_ENDPOINT'),
+)
+
+required_sap_fields = llm_core.identify_required_personalization_fields(
+    az_openai_client=az_openai_client,
+    model_name="gpt-4o",
+    draft_response=draft_response,
+    start_trace=start_trace,
+)
+
+update_span_list(start_trace, trace_metric_list)
+start_trace.update_trace(
+    input=query,
+    output=completion_text,
+    session_id=f"cnv-{conversation_id}",
+    user_id=user_id
+)
+
+start_trace.end()
+lf.flush()
+
+
+# Use the standard OpenAI client instead of AzureOpenAI
+client = OpenAI(
+    base_url="https://ai-gateway.qa.in.spdigital.sg",
+    api_key="dummy",  # Required but not used
+    default_headers={
+        'model': 'openai',
+        'subModel': 'gpt-4.1',
+        'client-id': 'a3f7b27d767940f8be5f72779912fe03',
+        'client-secret': '2366CCd77d964e82831f5E251678C0Cf',
+        'api-version': '2025-01-01-preview',
+        'project': 'HRBuddy'
+    }
+)
+
+response = client.chat.completions.create(
+    messages=[
+        {
+            "role": "system",
+            "content": "You are a helpful assistant."
+        },
+        {
+            "role": "user",
+            "content": "What is GST voucher"
+        }
+    ],
+    model="gpt-4.1",
+    temperature=0.7,
+    max_tokens=500
+)
+
+print("Response content:")
+print(response.choices[0].message.content)
+
+print("\n\nMetadata:")
+print(f"ID: {response.id}")
+print(f"Model: {response.model}")
+print(f"Tokens used: {response.usage.total_tokens}")
+
+
+url = "https://ai-gateway.qa.in.spdigital.sg/ai-search"
+
+headers = {
+    'Content-Type': 'application/json',
+    'model': 'openai',
+    'subModel': 'text-embedding-3-large',
+    'client-id': 'a3f7b27d767940f8be5f72779912fe03',
+    'client-secret': '2366CCd77d964e82831f5E251678C0Cf',
+    'project': 'HRBuddy',
+    'vector-index': 'spl_hr_buddy_sap'
+}
+print(required_sap_fields)
+payload = json.dumps({
+    "query": "ESP567E",
+    "searchType": "vector",
+    "vector": {
+        "kind": "vector",
+        "fields": "user_name_vector",
+        "k": 3,
+        "exhaustive": True,
+    },
+    "$select": "user_name, " + ", ".join(required_sap_fields),
+    "top": 1
+})
+response = requests.request("POST", url, headers=headers, data=payload)
+
+if response.status_code != 200:
+    print("error {}".format(response.status_code))
+    print(response.text)
+
+if isinstance(required_sap_fields, str):
+    import ast
+    required_sap_fields = ast.literal_eval(required_sap_fields)
+result = response.json()
+search_result = result['value']
+fields_to_keep = ["user_name"] + required_sap_fields
+filtered_results = [
+    {k: v for k, v in item.items() if k in fields_to_keep}
+    for item in search_result
+]
+filtered_results[0]
+
+
 from cryptography.fernet import Fernet
 
 # this will be the same key used for encrypting and decrypting the data in QA
-SAP_DATA_KEY = ""
+SAP_DATA_KEY = "ctWsiFNflfxvD4MWvVt0CqKKs0mYr1SWYe4kk-GV9Oo="
 fernet = Fernet(SAP_DATA_KEY.encode())
 
 def decrypt_value(fernet, value):
@@ -9,10 +238,10 @@ def decrypt_value(fernet, value):
         return ""
     return fernet.decrypt(value.encode()).decode()
 
-fields_to_decrypt = ["full_name", "person_id", "email_address", "user_name", "generic_role", "employee_sub_group"]
+fields_to_decrypt = ["user_name"] + required_sap_fields
 decrypted_results = []
 for doc in search_result:
     decrypted = {f: decrypt_value(fernet, doc.get(f)) for f in fields_to_decrypt}
     decrypted_results.append(decrypted)
 
-decrypted_results
+decrypted_results[0]
