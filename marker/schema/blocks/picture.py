@@ -1,3 +1,4 @@
+from __future__ import annotations
 from marker.schema import BlockTypes
 from marker.schema.blocks import Block
 

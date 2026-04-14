@@ -1,0 +1,7 @@
+annotated-types==0.7.0
+pillow==11.3.0
+pydantic==2.13.0
+pydantic-core==2.46.0
+typing-extensions==4.15.0
+typing-inspection==0.4.2
+numpy==2.0.2

@@ -1,3 +1,4 @@
+from __future__ import annotations
 import os
 
 os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = (

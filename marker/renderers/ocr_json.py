@@ -1,3 +1,4 @@
+from __future__ import annotations
 from typing import Annotated, List, Tuple
 
 from pydantic import BaseModel

@@ -1,3 +1,4 @@
+from __future__ import annotations
 from typing import List, Annotated
 from PIL import Image
 
