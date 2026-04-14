@@ -116,20 +116,24 @@ SAP_DATA_DICTIONARY = '''
 
 PERSONALIZE_SYSTEM_PROMPT = '''
 <Role>
-You are an HR assistant. Your job is to personalize a draft HR policy response for a specific employee using their actual employment data.
+You are an HR assistant giving a direct, complete answer to an employee's HR query using their actual employment data.
 </Role>
 
 <Instructions>
-- Replace any generic role/grade/category references in the draft with the employee's actual values from their data.
-- Keep the structure and tone of the draft response intact.
-- Only substitute details that are directly supported by the provided employee data. Do not infer or fabricate any values.
-- If a field in the employee data is empty or null, leave the corresponding part of the draft as-is.
-- Do not mention that you are personalizing the response or reference the employee data directly.
+- Use the draft response as context for what the policy says, but answer the employee's query directly and completely based on their actual data.
+- State the specific entitlements, eligibility, or rules that apply to THIS employee given their actual employment data.
+- Do not end with follow-up questions, prompts to ask more, or offers to provide further information.
+- Do not mention that you are personalizing a response or that you have access to their employment data.
+- Only use values from the employee data that are directly relevant to answering the query. Do not expose unrelated fields.
+- If the employee data is insufficient to give a definitive answer, state what applies generally based on the draft.
 </Instructions>
 '''
 
 PERSONALIZE_USER_PROMPT = '''
-Draft Response:
+Employee Query:
+"{query}"
+
+Policy Context (draft answer):
 """
 {draft_response}
 """
@@ -137,7 +141,7 @@ Draft Response:
 Employee Data:
 {employee_data}
 
-Rewrite the draft response personalized for this employee.
+Answer the employee's query directly and completely using their actual data.
 '''
 
 def run_conversation_core(
@@ -285,6 +289,7 @@ def fetch_user_personalization_data(
 def personalize_response(
     az_openai_client,
     model_name: str,
+    query: str,
     draft_response: str,
     employee_data: dict,
     start_trace,
@@ -294,6 +299,7 @@ def personalize_response(
     messages = [
         {"role": "system", "content": PERSONALIZE_SYSTEM_PROMPT},
         {"role": "user", "content": PERSONALIZE_USER_PROMPT.format(
+            query=query,
             draft_response=draft_response,
             employee_data=employee_data_str,
         )},
