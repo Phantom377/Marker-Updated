@@ -1,30 +1,227 @@
-InternalServerError                       Traceback (most recent call last)
-Cell In[2], line 41
-     30 with lf.start_as_current_observation(
-     31     as_type="span",
-     32     name="QnA"
-     33 ) as start_trace:
-     35     az_openai_client = AzureOpenAI(
-     36         api_key=config.config['AZURE_OPENAI_API_KEY'],
-     37         api_version=config.get('models','AZURE_OPENAI_API_VERSION'),
-     38         azure_endpoint=config.get('models','AZURE_OPENAI_ENDPOINT'),
-     39     )
----> 41     events = list(llm_core.run_conversation_core(
-     42         messages={"messages":[{"role": "system", "content": system_content}, {"role": "user", "content": query}]},
-     43         system_content=system_content,
-     44     ))
-     46     completion_text = ''
-     47     for event in events:
+import os
+import sys
+import json
+import time
+import random
+import urllib
+from langchain.text_splitter import MarkdownHeaderTextSplitter
+from langchain.docstore.document import Document
+from openai import AzureOpenAI, RateLimitError
 
-File ~/hr-chatbot/src/server/chat/llm_core.py:161, in run_conversation_core(messages, system_content)
-    159 # Prepare messages for the LLM
-    160 print("Before entering dcc_prepare_chat_messages", flush=True)
---> 161 messages["messages"] = dcc_prepare_chat_messages(
-    162     messages["messages"],
-    163     system_content,
-...
-   1051 assert response is not None, "could not resolve response (should never happen)"
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+from server.model_source.config import Config
 
-InternalServerError: Invocation of Method 'checkAccess(java.util.Map, java.lang.String)' from Class 'access.AccessControl' with arguments [org.mule.runtime.http.api.domain.CaseInsensitiveMultiMap$ImmutableCaseInsensitiveMultiMap arg0, org.mule.runtime.core.internal.streaming.bytes.ManagedCursorStreamProvider arg1] resulted in an error.
-Expected arguments are [java.util.Map<java.lang.String, java.lang.String> payloadHeaders, java.lang.String piiPayload].
-Cause: java.lang.NullPointerException - Cannot invoke "java.util.HashMap.isEmpty()" because "projectAccessInfo" is null
+CONTEXT_PROMPT_TEMPLATE = """
+<document>
+{whole_document}
+</document>
+Here is the chunk we want to situate within the whole document:
+<chunk>
+{chunk_content}
+</chunk>
+Please give a short succinct context to situate this chunk within the overall document
+for the purposes of improving search retrieval of the chunk.
+Answer only with the succinct context and nothing else.
+"""
+
+def call_with_backoff(func, *args, max_retries=5, **kwargs):
+    delay = 1.0
+    for attempt in range(max_retries):
+        try:
+            return func(*args, **kwargs)
+        except RateLimitError as e:
+            print(f"Rate limited (attempt {attempt+1}/{max_retries}): {e}")
+            time.sleep(delay + random.uniform(0, 0.5))
+            delay *= 2
+    raise RuntimeError("Max retries exceeded due to rate limiting")
+
+
+class Chunker:
+    '''
+    Handles loading MD documents from a folder and chunking them.
+    Short chunks below 'min_chars' are merged with the next chunk
+    '''
+    def __init__(self, md_folder: str, sharepoint_tpl: str, min_chars: int = 300):
+        self.md_folder = md_folder
+        self.sharepoint_tpl = sharepoint_tpl
+        self.min_chars = min_chars
+        self.documents = []           # for combined-documents
+        self.chunks = []              # for combined-doc chunks
+
+    def format_filename(self, filename: str) -> str:
+        # Adjust if filenames contain extra suffixes    
+        return filename[:-3]
+
+    def get_metadata(self, filename: str) -> dict:
+        url = self.sharepoint_tpl.format(
+            urllib.parse.quote(filename).replace('.', '%2E')
+        )
+        return {"source": filename, "link": url}
+
+    def load_documents(self):
+        '''
+        Loads all .md files from the folder as LangChain Documents.
+        '''
+        for filename in os.listdir(self.md_folder):
+            if filename.endswith(".md"):
+                filepath = os.path.join(self.md_folder, filename)
+                with open(filepath, "r", encoding="utf-8") as f:
+                    content = f.read()
+
+                metadata = self.get_metadata(self.format_filename(filename))
+                doc = Document(page_content=content, metadata=metadata)
+                self.documents.append(doc)
+                
+
+    def chunk_documents(self):
+        '''
+    Uses MarkdownHeaderTextSplitter to chunk each document by header levels.
+        For any chunk that has subsections in metadata, prepend higher-level headers
+        to the front of page_content:
+        - If meta has subsubsection (###), prepend "# section" and "## subsection"
+        - If meta has subsection (##), prepend "# section"
+        - If meta has only section (#), do nothing
+        '''
+        splitter = MarkdownHeaderTextSplitter(
+            headers_to_split_on=[
+                ("#", "section"),
+                ("##", "subsection"),
+                ("###", "subsubsection")
+            ],
+            strip_headers=False
+        )
+
+        for doc in self.documents:
+            raw_chunks = splitter.split_text(doc.page_content)
+            for c in raw_chunks:
+                # keep parent doc metadata
+                c.metadata.update(doc.metadata)
+
+                # ---- Minimal addition: prepend higher-level headers if present ----
+                meta = c.metadata
+                prefix_lines = []
+
+                # If this chunk is at ### level, prepend # and ##
+                if meta.get("subsubsection"):
+                    if meta.get("section"):
+                        prefix_lines.append(f"# {meta['section']}")
+                    if meta.get("subsection"):
+                        prefix_lines.append(f"## {meta['subsection']}")
+
+                # Else if this chunk is at ## level, prepend #
+                elif meta.get("subsection"):
+                    if meta.get("section"):
+                        prefix_lines.append(f"# {meta['section']}")
+
+                if prefix_lines:
+                    # lstrip so we don't end up with extra leading blank lines
+                    c.page_content = "\n\n".join(prefix_lines) + "\n\n" + c.page_content.lstrip()
+                # ---- End minimal addition ----
+
+            # Merge short chunks (unchanged)
+            i = 0
+            while i < len(raw_chunks):
+                curr = raw_chunks[i]
+                merged_content = curr.page_content.strip()
+                merged_metadata = curr.metadata.copy()
+
+                # Merge forward while content is too short
+                while len(merged_content) < self.min_chars and i + 1 < len(raw_chunks):
+                    next_chunk = raw_chunks[i + 1]
+                    merged_content += "\n\n" + next_chunk.page_content.strip()
+                    i += 1
+
+                merged_doc = Document(page_content=merged_content, metadata=merged_metadata)
+                self.chunks.append(merged_doc)
+                i += 1
+
+        # print(self.chunks[9])
+
+    def chunk_by_top_header(self):
+        '''
+        Chunks each document by # (top-level) headers only.
+        Returns a dict mapping filename -> list of chunk dicts.
+        '''
+        splitter = MarkdownHeaderTextSplitter(
+            headers_to_split_on=[("#", "section")],
+            strip_headers=False
+        )
+
+        results = {}
+        for doc in self.documents:
+            filename = doc.metadata.get("source", "unknown")
+            raw_chunks = splitter.split_text(doc.page_content)
+
+            chunks = []
+            for i, chunk in enumerate(raw_chunks):
+                chunks.append({
+                    "chunk_index": i,
+                    "section": chunk.metadata.get("section", ""),
+                    "content": chunk.page_content.strip(),
+                    "metadata": doc.metadata,
+                })
+            results[filename] = chunks
+
+        return results
+
+    def add_context_to_chunks(self, chunks_by_file: dict, azure_client: AzureOpenAI, model_name: str) -> dict:
+        '''
+        For each chunk, calls the LLM with the whole document + chunk content
+        to generate a short context summary, then prepends it to the chunk content.
+        '''
+        # Build a lookup of filename -> whole document text
+        doc_lookup = {doc.metadata.get("source", ""): doc.page_content for doc in self.documents}
+
+        for filename, chunks in chunks_by_file.items():
+            whole_document = doc_lookup.get(filename, "")
+            for i, chunk in enumerate(chunks):
+                prompt = CONTEXT_PROMPT_TEMPLATE.format(
+                    whole_document=whole_document,
+                    chunk_content=chunk["content"],
+                )
+                resp = call_with_backoff(
+                    azure_client.chat.completions.create,
+                    model=model_name,
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=0.0,
+                    max_tokens=256,
+                )
+                context = (resp.choices[0].message.content or "").strip()
+                if context:
+                    chunk["content"] = f"[Context] {context}\n\n{chunk['content']}"
+                print(f"  [{filename}] chunk {i} context added")
+
+        return chunks_by_file
+
+    def save_chunks_to_folder(self, chunks_by_file: dict, output_folder: str):
+        '''
+        Saves each file's chunks as a separate JSON file in output_folder.
+        '''
+        os.makedirs(output_folder, exist_ok=True)
+        for filename, chunks in chunks_by_file.items():
+            base = os.path.splitext(os.path.basename(filename))[0]
+            out_path = os.path.join(output_folder, f"{base}.json")
+            with open(out_path, "w", encoding="utf-8") as f:
+                json.dump(chunks, f, ensure_ascii=False, indent=2)
+            print(f"Saved {len(chunks)} chunks → {out_path}")
+
+
+if __name__ == "__main__":
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    INPUT_FOLDER = os.path.join(BASE_DIR, "input_md")
+    OUTPUT_FOLDER = os.path.join(BASE_DIR, "output_json")
+
+    config = Config()
+    azure_client = AzureOpenAI(
+        api_key=config.config['AZURE_OPENAI_API_KEY'],
+        azure_endpoint=config.get('models', 'AZURE_OPENAI_ENDPOINT'),
+        api_version=config.get('models', 'AZURE_OPENAI_API_VERSION'),
+    )
+    model_name = config.get('models', 'AZURE_OPENAI_CHAT_DEPLOYMENT')
+
+    chunker = Chunker(md_folder=INPUT_FOLDER, sharepoint_tpl="{}")
+    chunker.load_documents()
+    chunks_by_file = chunker.chunk_by_top_header()
+    chunks_by_file = chunker.add_context_to_chunks(chunks_by_file, azure_client, model_name)
+    chunker.save_chunks_to_folder(chunks_by_file, OUTPUT_FOLDER)
+    print("Done.")
