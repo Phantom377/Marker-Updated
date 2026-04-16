@@ -1,190 +1,106 @@
 import os
-import time
-import random
-import json
-import sys
-import argparse
-
-from openai import AzureOpenAI, RateLimitError
-from langchain_milvus import Milvus
-from langchain.schema import Document
-from langfuse import get_client, observe
-
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-from preprocessing.chunker_MD import Chunker
-from server.model_source.config import Config
-from server.model_source.modules import ChatClient,EmbeddingClient
+import urllib
+from langchain.text_splitter import MarkdownHeaderTextSplitter
+from langchain.docstore.document import Document
 
 
-# Path and SharePoint template
-SRC_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-DATA_DIR = os.path.join(SRC_DIR, "server", "model_source", "data")
-MD_FOLDER = os.path.join(DATA_DIR, "edited_markdown")
+class Chunker:
+    '''
+    Handles loading MD documents from a folder and chunking them.
+    Short chunks below 'min_chars' are merged with the next chunk
+    '''
+    def __init__(self, md_folder: str, sharepoint_tpl: str, min_chars: int = 300):
+        self.md_folder = md_folder
+        self.sharepoint_tpl = sharepoint_tpl
+        self.min_chars = min_chars
+        self.documents = []           # for combined-documents
+        self.chunks = []              # for combined-doc chunks
 
-SHAREPOINT_TPL = (
-    'https://sppower.sharepoint.com/sites/Spectrum/'
-    'Employee%20Essentials/'
-    '{}'
-    '%2Epdf?v={}#page={}'
-)
-PROMPT_TEMPLATE = """
-<document>
-{whole_document}
-</document>
-Here is the chunk we want to situate within the whole document
-<chunk>
-{chunk_content}
-</chunk>
-Please give a short succinct context to situate this chunk within the overall document 
-for the purposes of improving search retrieval of the chunk. 
-Answer only with the succinct context and nothing else.
-"""
+    def format_filename(self, filename: str) -> str:
+        # Adjust if filenames contain extra suffixes    
+        return filename[:-3]+'.pdf'
 
-config = Config()
+    def get_metadata(self, filename: str) -> dict:
+        url = self.sharepoint_tpl.format(
+            urllib.parse.quote(filename).replace('.', '%2E')
+        )
+        return {"source": filename, "link": url}
 
-os.environ["LANGFUSE_PUBLIC_KEY"] = config.get('tracing','LANGFUSE_PUBLIC_KEY')
-os.environ["LANGFUSE_SECRET_KEY"] = config.get('tracing','LANGFUSE_SECRET_KEY')
-os.environ["LANGFUSE_HOST"] = config.get('tracing','LANGFUSE_HOST')
+    def load_documents(self):
+        '''
+        Loads all .md files from the folder as LangChain Documents.
+        '''
+        for filename in os.listdir(self.md_folder):
+            if filename.endswith(".md"):
+                filepath = os.path.join(self.md_folder, filename)
+                with open(filepath, "r", encoding="utf-8") as f:
+                    content = f.read()
 
-langfuse = get_client()
+                metadata = self.get_metadata(self.format_filename(filename))
+                doc = Document(page_content=content, metadata=metadata)
+                self.documents.append(doc)
+                
 
-def call_with_backoff(func, *args, max_retries=5, **kwargs):
-    """
-    Call an API function with exponential backoff on 429/503 errors.
-    """
-    delay = 1.0
-    for attempt in range(max_retries):
-        try:
-            return func(*args, **kwargs)
-        except (RateLimitError) as e:
-            print(f"Rate limited (attempt {attempt+1}/{max_retries}): {e}")
-            time.sleep(delay + random.uniform(0, 0.5))  # jitter
-            delay *= 2  # exponential backoff
-    raise RuntimeError("Max retries exceeded due to rate limiting")
+    def chunk_documents(self):
+        '''
+    Uses MarkdownHeaderTextSplitter to chunk each document by header levels.
+        For any chunk that has subsections in metadata, prepend higher-level headers
+        to the front of page_content:
+        - If meta has subsubsection (###), prepend "# section" and "## subsection"
+        - If meta has subsection (##), prepend "# section"
+        - If meta has only section (#), do nothing
+        '''
+        splitter = MarkdownHeaderTextSplitter(
+            headers_to_split_on=[
+                ("#", "section"),
+                ("##", "subsection"),
+                ("###", "subsubsection")
+            ],
+            strip_headers=False
+        )
 
-@observe
-def contextual_retrieval(chunk):
-    source = chunk.metadata.get("source")
-    source = source[:-4] + ".md"
+        for doc in self.documents:
+            raw_chunks = splitter.split_text(doc.page_content)
+            for c in raw_chunks:
+                # keep parent doc metadata
+                c.metadata.update(doc.metadata)
 
-    md_path = os.path.join(MD_FOLDER, source)
-    with open(md_path, "r", encoding="utf-8") as f:
-        whole_document = f.read()
+                # ---- Minimal addition: prepend higher-level headers if present ----
+                meta = c.metadata
+                prefix_lines = []
 
-    chunk_text = chunk.page_content
-    prompt = PROMPT_TEMPLATE.format(
-        whole_document=whole_document,
-        chunk_content=chunk_text
-    )
+                # If this chunk is at ### level, prepend # and ##
+                if meta.get("subsubsection"):
+                    if meta.get("section"):
+                        prefix_lines.append(f"# {meta['section']}")
+                    if meta.get("subsection"):
+                        prefix_lines.append(f"## {meta['subsection']}")
 
-    resp = call_with_backoff(
-        azure_client.chat.completions.create,
-        model=config.get("models", "AZURE_OPENAI_CHAT_DEPLOYMENT"),
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.0,
-        max_tokens=1024,
-    )
-    succinct_context = (resp.choices[0].message.content or "").strip()
+                # Else if this chunk is at ## level, prepend #
+                elif meta.get("subsection"):
+                    if meta.get("section"):
+                        prefix_lines.append(f"# {meta['section']}")
 
-    if succinct_context:
-        chunk.page_content = f"[Context] {succinct_context}\n\n{chunk.page_content}"
+                if prefix_lines:
+                    # lstrip so we don't end up with extra leading blank lines
+                    c.page_content = "\n\n".join(prefix_lines) + "\n\n" + c.page_content.lstrip()
+                # ---- End minimal addition ----
 
-    return chunk
+            # Merge short chunks (unchanged)
+            i = 0
+            while i < len(raw_chunks):
+                curr = raw_chunks[i]
+                merged_content = curr.page_content.strip()
+                merged_metadata = curr.metadata.copy()
 
-def save_chunks(chunks, path=os.path.join(DATA_DIR, "enriched_chunks.json")):
-    serializable = []
-    for c in chunks:
-        serializable.append({
-            "page_content": c.page_content,
-            "metadata": c.metadata,
-        })
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(serializable, f, ensure_ascii=False, indent=2)
+                # Merge forward while content is too short
+                while len(merged_content) < self.min_chars and i + 1 < len(raw_chunks):
+                    next_chunk = raw_chunks[i + 1]
+                    merged_content += "\n\n" + next_chunk.page_content.strip()
+                    i += 1
 
-def load_chunks(path=os.path.join(DATA_DIR, "enriched_chunks.json")):
-    with open(path, "r", encoding="utf-8") as f:
-        data = json.load(f)
-    return [Document(page_content=d["page_content"], metadata=d["metadata"]) for d in data]
+                merged_doc = Document(page_content=merged_content, metadata=merged_metadata)
+                self.chunks.append(merged_doc)
+                i += 1
 
-
-if __name__ == '__main__':
-    # --- Parse flags ---
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--mode",
-        choices=["auto", "step1", "step2"],
-        default="auto",
-        help="Execution mode: step1 (re-chunk docs), step2 (load from JSON), auto (decide based on JSON existence)"
-    )
-    args = parser.parse_args()
-    # python upload.py --mode auto   # usually safest
-    # python upload.py --mode step1  # force rebuild + load
-    # python upload.py --mode step2  # assume JSON exists
-
-
-    config = Config()
-    chat_client = ChatClient(
-        provider="azure",
-        api_key=config.config['AZURE_OPENAI_API_KEY'],
-        api_endpoint=config.get('models','AZURE_OPENAI_ENDPOINT'),
-        api_version=config.get('models','AZURE_OPENAI_API_VERSION'),
-        deployment_name=config.get('models','AZURE_OPENAI_CHAT_DEPLOYMENT'),
-    )
-    embedding_client = EmbeddingClient(
-    provider='azure',
-        api_key=config.config['AZURE_OPENAI_API_KEY'],
-        api_endpoint=config.get('models','AZURE_OPENAI_ENDPOINT'),
-        api_version=config.get('models','AZURE_OPENAI_API_VERSION'),
-        deployment=config.get('models','AZURE_OPENAI_DEPLOYMENT')
-    )
-    azure_client = AzureOpenAI(
-        api_key=config.config['AZURE_OPENAI_API_KEY'],
-        azure_endpoint=config.get('models','AZURE_OPENAI_ENDPOINT'),
-        api_version=config.get('models','AZURE_OPENAI_API_VERSION')
-    )
-    # --- Decide mode ---
-    json_exists = os.path.exists(os.path.join(DATA_DIR, "enriched_chunks.json"))
-
-    # Load and chunk documents (for updating documents)
-    if args.mode == "step1" or (args.mode == "auto" and not json_exists):
-        print("Running Step 1: chunking documents...")
-        chunker = Chunker(md_folder=MD_FOLDER, sharepoint_tpl=SHAREPOINT_TPL)
-        chunker.load_documents()
-        chunker.chunk_documents()
-        for i, chunk in enumerate(chunker.chunks):
-            new_chunk = contextual_retrieval(chunk)
-            chunker.chunks[i] = new_chunk
-            print(f"Chunk {i} done")
-        save_chunks(chunker.chunks)
-    else:
-        print("Skipping Step 1.")
-
-    print("Running Step 2: loading chunks into Milvus...")
-    # Upload chunks directly from json (assuming json file already updated)
-    chunker = Chunker(md_folder=MD_FOLDER, sharepoint_tpl=SHAREPOINT_TPL)
-    chunker.chunks = load_chunks()
-
-    INDEX_PARAMS = {"index_type": "HNSW", "metric_type": "IP", "params": {"M": 16, "efConstruction": 200}}
-    SEARCH_PARAMS = {"metric_type": "IP", "params": {"ef": 64}}
-
-    vectorstore = Milvus.from_documents(
-        documents=chunker.chunks,
-        embedding=embedding_client,
-        collection_name="LangChainCollection",       
-        connection_args={"uri": config.get('preprocessing','MILVUS_URL')},          
-        index_params=INDEX_PARAMS,
-        search_params=SEARCH_PARAMS,
-        drop_old=True,                                  
-        auto_id=True                                
-    )
-
-    #Test for successful creation
-    vectorstore = Milvus(
-        embedding_function=embedding_client,
-        collection_name="LangChainCollection",
-        connection_args={"uri": config.get('preprocessing','MILVUS_URL') }
-    )
-    results = vectorstore.similarity_search_with_score("outfit allowance", k=1)
-    for doc, score in results:
-        print(score, doc)
-
+        # print(self.chunks[9])    
