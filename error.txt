@@ -1,336 +1,190 @@
 import os
-import logging
 import time
+import random
 import json
-import requests
-from typing import List
-from datetime import datetime
-from dateutil import tz
+import sys
+import argparse
 
-from pydantic import BaseModel, Field
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.runnables import RunnablePassthrough
+from openai import AzureOpenAI, RateLimitError
+from langchain_milvus import Milvus
+from langchain.schema import Document
+from langfuse import get_client, observe
 
-from langfuse import Langfuse
-from langfuse import get_client
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+from preprocessing.chunker_MD import Chunker
+from server.model_source.config import Config
+from server.model_source.modules import ChatClient,EmbeddingClient
 
-from modules.embeddings import EmbeddingClient
-from modules.models import ChatClient
-from modules.database import RetrieverWithScores, VectorStore
-from modules.prompts import get_prompt_template
-from model_source.modules.models import ChatClient, HumanMessage, SystemMessage
-from config import Config
 
-from openai import OpenAI
+# Path and SharePoint template
+SRC_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+DATA_DIR = os.path.join(SRC_DIR, "server", "model_source", "data")
+MD_FOLDER = os.path.join(DATA_DIR, "edited_markdown")
 
-logger = logging.getLogger(__name__)
+SHAREPOINT_TPL = (
+    'https://sppower.sharepoint.com/sites/Spectrum/'
+    'Employee%20Essentials/'
+    '{}'
+    '%2Epdf?v={}#page={}'
+)
+PROMPT_TEMPLATE = """
+<document>
+{whole_document}
+</document>
+Here is the chunk we want to situate within the whole document
+<chunk>
+{chunk_content}
+</chunk>
+Please give a short succinct context to situate this chunk within the overall document 
+for the purposes of improving search retrieval of the chunk. 
+Answer only with the succinct context and nothing else.
+"""
 
 config = Config()
-embedding_client = EmbeddingClient(
-    provider='azure',
-    api_key=config.config['AZURE_OPENAI_API_KEY'],
-    api_endpoint=config.get('models','AZURE_OPENAI_ENDPOINT'),
-    api_version=config.get('models','AZURE_OPENAI_API_VERSION'),
-    deployment=config.get('models','AZURE_OPENAI_DEPLOYMENT')
-)
-chat_client = ChatClient(
-    provider="azure",
-    api_key=config.config['AZURE_OPENAI_API_KEY'],
-    api_endpoint=config.get('models','AZURE_OPENAI_ENDPOINT'),
-    api_version=config.get('models','AZURE_OPENAI_API_VERSION'),
-    deployment_name=config.get('models','AZURE_OPENAI_CHAT_DEPLOYMENT'),
-    )
 
 os.environ["LANGFUSE_PUBLIC_KEY"] = config.get('tracing','LANGFUSE_PUBLIC_KEY')
 os.environ["LANGFUSE_SECRET_KEY"] = config.get('tracing','LANGFUSE_SECRET_KEY')
 os.environ["LANGFUSE_HOST"] = config.get('tracing','LANGFUSE_HOST')
 
-lf = get_client()
+langfuse = get_client()
 
-client = OpenAI(
-    base_url=config.get('OpenAI', 'URL'),
-    api_key="dummy",  # Required but not used
-    default_headers={
-        'model': 'openai',
-        'subModel': config.get('OpenAI', 'MODEL'),
-        'client-id': config.get('OpenAI', 'client_id'),
-        'client-secret': config.get('OpenAI', 'client_secret'),
-        'api-version': config.get('OpenAI', 'API_VERSION')
-
-    }
-)
-
-def DB_search(query)->list[dict]:
-    # start Langfuse tracing of DBSearch
-    with lf.start_as_current_observation(
-        as_type="retriever",
-        name="DBSearch"
-    ) as DBSearch_span:
-        retrieval_list = []
-
-        payload = json.dumps({
-            "query": query,
-            "searchType": "hybrid",
-            "vector": {
-                "kind": "vector",
-                "fields": "page_contentVector",
-                "k": 10,
-                "exhaustive": True,
-                "queryType": "semantic",
-                "semanticConfiguration": "hrbuddy-semantic-config",
-                "select": "section, source, link, page_content, tags, created_at",
-                "searchFields" : "page_content", # optional, without searchFields will search all searchable fields, with searchFields it will only search in the specified fields
-                "filter": "project eq 'HRBUDDY' and tags/any(t: t eq 'current')",
-                "top": 5
-            }
-        })
-
-        headers = {
-            'Content-Type': 'application/json',
-            'model': 'openai',
-            'subModel': config.get('vector_database', 'embedding_model'),
-            'client-id': config.get('vector_database', 'client_id'),
-            'client-secret': config.get('vector_database', 'client_secret'),
-            'project': 'HRBuddy',
-            'vector-index': 'spl_hr_buddy'
-        }
-        
+def call_with_backoff(func, *args, max_retries=5, **kwargs):
+    """
+    Call an API function with exponential backoff on 429/503 errors.
+    """
+    delay = 1.0
+    for attempt in range(max_retries):
         try:
-            response = requests.request("POST", config.get('vector_database', 'url'), headers=headers, data=payload)
-            results = json.loads(response.text).get('value')
+            return func(*args, **kwargs)
+        except (RateLimitError) as e:
+            print(f"Rate limited (attempt {attempt+1}/{max_retries}): {e}")
+            time.sleep(delay + random.uniform(0, 0.5))  # jitter
+            delay *= 2  # exponential backoff
+    raise RuntimeError("Max retries exceeded due to rate limiting")
 
-            for result in results:
-                retrieval_dict = {}
-                retrieval_dict['title'] = result.get('source')
-                retrieval_dict['link'] = result.get('link')
-                # retrieval_dict['score'] = result.get('@search.score')
-                retrieval_dict['content'] = result.get('page_content')
-                retrieval_dict['date_updated'] = result.get('date_updated', str(datetime(9999, 1, 1)))
+@observe
+def contextual_retrieval(chunk):
+    source = chunk.metadata.get("source")
+    source = source[:-4] + ".md"
 
-                retrieval_list.append(retrieval_dict)
-        except Exception as e:
-            print(f"Error found: {e}")
-            return []
+    md_path = os.path.join(MD_FOLDER, source)
+    with open(md_path, "r", encoding="utf-8") as f:
+        whole_document = f.read()
 
-        # logger.warning(f'azure ai search query time: {time.time()-marker:.2f}')
-        # trace_metric_list = create_trace_metric_list('QueryRewrite', query, retrieval_list)
-        # update_span_list(DBSearch_span,trace_metric_list)
-        DBSearch_span.update(input=query, output=retrieval_list)
-        # DBSearch_span.end()
-        return retrieval_list # returns a list of Dictionaries. Each Dictionary is a result of the search
-
-def query_rewrite(msg_list):
-
-    # start Langfuse tracing of user query rewrite
-    
-    with lf.start_as_current_observation(
-        as_type="generation",
-        name="QueryRewrite",
-        model=config.get('OpenAI', 'QUERY_REWRITE_MODEL')
-    ) as rewrite_span:
-
-        if len(msg_list) <= 1:
-            logger.warning(f"Skipping query rewrite: {msg_list[-1]['content']}")
-            # rewrite_span.end()
-            return
-        
-        _query_list = []
-        for m in msg_list:
-            if m['role'] == 'system':
-                continue
-            elif m['role'] == 'assistant':
-                _query_list.append(f"{m['role']}: {m['content'].split('__References__')[0]}")
-            else:
-                _query_list.append(f"{m['role']}: {m['content']}")
-
-        # Query Rewrite
-        rewrite_msg_list = [
-            {
-                'role': 'system',
-                'content': get_prompt_template('SYS_PROMPT_REWRITE')
-            },
-            {
-                'role': 'user',
-                'content': '\n'.join(_query_list)
-            }
-        ]
-        response = client.chat.completions.create(
-            messages=rewrite_msg_list,
-            model=config.get('OpenAI', 'MODEL'),
-            temperature=0,
-            max_tokens=500
-        )
-        new_query_str = response.choices[0].message.content
-
-        msg_list[-1]['content'] = new_query_str
-        # trace_metric_list = create_trace_metric_list('QueryRewrite',rewrite_msg_list,new_query_str)
-        # update_span_list(rewrite_span,trace_metric_list)
-        rewrite_span.update(input=rewrite_msg_list, output=new_query_str)
-
-        return 
-
-
-def dcc_prepare_chat_messages(
-        msg_list,
-        system_content,
-        doc_dict = {},
-        retrieval_list_out = None
-    ):
-    '''
-    For chat, rewrite the query string, then retrieve contexts from DBSearch
-    and return the updated messages.
-    '''
-    # Rewrite query string
-    query_rewrite(msg_list)
-    query_str = msg_list[-1]['content']
-
-    # Retrieve Contexts
-    retrieval_list = DB_search(query_str)
-    if retrieval_list_out is not None:
-        retrieval_list_out.extend(retrieval_list)
-  
-    ind = 0
-    for i in retrieval_list:
-        if i["title"] not in doc_dict:
-            ind += 1
-            # alink = '<a href="'+i["link"]+'" target="_blank">'+i["title"]+'</a>'
-            doc_dict[i['title']] = {
-                'text': f'* [{ind}] [{i["title"]}]({i["link"]}) - Last Updated: {datetime.fromisoformat(i["date_updated"]).strftime("%d %b %Y")}',
-                #'text': f'* [{ind}] {alink}',
-                'index': ind
-            }
-
-    # Prepare new context
-    context_str = ''
-    for i in retrieval_list:
-        # if i['score'] < 0.01:
-        #     continue
-        context_str += get_prompt_template('CONTEXT_TEMPLATE',
-                                            counter=doc_dict[i['title']]['index'],
-                                            title=i['title'],
-                                            content=i['content']
-                                            )
-
-    _query_list = []
-    for m in msg_list:
-        if m['role'] == 'system':
-            continue
-        elif m['role'] == 'assistant':
-            _query_list.append(
-                f"{m['role']}: {m['content'].split('__References__')[0]}"
-            )
-        else:
-            _query_list.append(
-                f"{m['role']}: {m['content']}"
-            )
-    new_query_str = get_prompt_template('RAG_PROMPT_TEMPLATE',context_str=context_str,query_str='\n'.join(_query_list))
-
-    # Update query
-    return  (
-        [
-            {"role": "system", "content": system_content},
-            {"role": "user", "content": new_query_str},
-        ]
+    chunk_text = chunk.page_content
+    prompt = PROMPT_TEMPLATE.format(
+        whole_document=whole_document,
+        chunk_content=chunk_text
     )
 
+    resp = call_with_backoff(
+        azure_client.chat.completions.create,
+        model=config.get("models", "AZURE_OPENAI_CHAT_DEPLOYMENT"),
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.0,
+        max_tokens=1024,
+    )
+    succinct_context = (resp.choices[0].message.content or "").strip()
 
-class PredictiveQuestion(BaseModel):
-    probability: float = Field(description="probability")
-    question: str = Field(description="question")
+    if succinct_context:
+        chunk.page_content = f"[Context] {succinct_context}\n\n{chunk.page_content}"
+
+    return chunk
+
+def save_chunks(chunks, path=os.path.join(DATA_DIR, "enriched_chunks.json")):
+    serializable = []
+    for c in chunks:
+        serializable.append({
+            "page_content": c.page_content,
+            "metadata": c.metadata,
+        })
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(serializable, f, ensure_ascii=False, indent=2)
+
+def load_chunks(path=os.path.join(DATA_DIR, "enriched_chunks.json")):
+    with open(path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    return [Document(page_content=d["page_content"], metadata=d["metadata"]) for d in data]
 
 
-class PredictiveQuestions(BaseModel):
-    questions: List[PredictiveQuestion] = Field(description="list of predictive questions")
+if __name__ == '__main__':
+    # --- Parse flags ---
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--mode",
+        choices=["auto", "step1", "step2"],
+        default="auto",
+        help="Execution mode: step1 (re-chunk docs), step2 (load from JSON), auto (decide based on JSON existence)"
+    )
+    args = parser.parse_args()
+    # python upload.py --mode auto   # usually safest
+    # python upload.py --mode step1  # force rebuild + load
+    # python upload.py --mode step2  # assume JSON exists
 
 
-def get_predictive_question_generator(llm):
+    config = Config()
+    chat_client = ChatClient(
+        provider="azure",
+        api_key=config.config['AZURE_OPENAI_API_KEY'],
+        api_endpoint=config.get('models','AZURE_OPENAI_ENDPOINT'),
+        api_version=config.get('models','AZURE_OPENAI_API_VERSION'),
+        deployment_name=config.get('models','AZURE_OPENAI_CHAT_DEPLOYMENT'),
+    )
+    embedding_client = EmbeddingClient(
+    provider='azure',
+        api_key=config.config['AZURE_OPENAI_API_KEY'],
+        api_endpoint=config.get('models','AZURE_OPENAI_ENDPOINT'),
+        api_version=config.get('models','AZURE_OPENAI_API_VERSION'),
+        deployment=config.get('models','AZURE_OPENAI_DEPLOYMENT')
+    )
+    azure_client = AzureOpenAI(
+        api_key=config.config['AZURE_OPENAI_API_KEY'],
+        azure_endpoint=config.get('models','AZURE_OPENAI_ENDPOINT'),
+        api_version=config.get('models','AZURE_OPENAI_API_VERSION')
+    )
+    # --- Decide mode ---
+    json_exists = os.path.exists(os.path.join(DATA_DIR, "enriched_chunks.json"))
 
-    # output_parser = PydanticToolsParser(tools=[PredictiveQuestions])
+    # Load and chunk documents (for updating documents)
+    if args.mode == "step1" or (args.mode == "auto" and not json_exists):
+        print("Running Step 1: chunking documents...")
+        chunker = Chunker(md_folder=MD_FOLDER, sharepoint_tpl=SHAREPOINT_TPL)
+        chunker.load_documents()
+        chunker.chunk_documents()
+        for i, chunk in enumerate(chunker.chunks):
+            new_chunk = contextual_retrieval(chunk)
+            chunker.chunks[i] = new_chunk
+            print(f"Chunk {i} done")
+        save_chunks(chunker.chunks)
+    else:
+        print("Skipping Step 1.")
 
-    prompt = ChatPromptTemplate.from_messages(
-        [
-            ("system", get_prompt_template('SYS_PROMPT_PREDICTIVE')),
-            ("user", "{context}"),
-        ]
+    print("Running Step 2: loading chunks into Milvus...")
+    # Upload chunks directly from json (assuming json file already updated)
+    chunker = Chunker(md_folder=MD_FOLDER, sharepoint_tpl=SHAREPOINT_TPL)
+    chunker.chunks = load_chunks()
+
+    INDEX_PARAMS = {"index_type": "HNSW", "metric_type": "IP", "params": {"M": 16, "efConstruction": 200}}
+    SEARCH_PARAMS = {"metric_type": "IP", "params": {"ef": 64}}
+
+    vectorstore = Milvus.from_documents(
+        documents=chunker.chunks,
+        embedding=embedding_client,
+        collection_name="LangChainCollection",       
+        connection_args={"uri": config.get('preprocessing','MILVUS_URL')},          
+        index_params=INDEX_PARAMS,
+        search_params=SEARCH_PARAMS,
+        drop_old=True,                                  
+        auto_id=True                                
     )
 
-    structured_llm = llm.with_structured_output(PredictiveQuestions)
-
-    predictor = {"context": RunnablePassthrough()} | prompt | structured_llm
-    return predictor
-
-
-DEFAULT_METADATA = {
-    "ls_provider": "azure",
-    "ls_model_name": "gpt-4o",
-    "ls_model_type": "chat",
-}
-
-DEFAULT_MODEL_PARAMETERS = {
-    "maxTokens": 1024,
-    "temperature": 0,
-    "top_p": 1,
-    "frequency_penalty": 0,
-    "presence_penalty": 0,
-}
-
-# Creates score on Langfuse for tracing user feedback
-def trace_score(dcc_config, trace_id, score, comment):
-    os.environ["LANGFUSE_PUBLIC_KEY"] = dcc_config.get('tracing','LANGFUSE_PUBLIC_KEY')
-    os.environ["LANGFUSE_SECRET_KEY"] = dcc_config.get('tracing','LANGFUSE_SECRET_KEY')
-    os.environ["LANGFUSE_HOST"] = dcc_config.get('tracing','LANGFUSE_HOST')
-
-    lf = get_client()
-
-    lf.create_score(
-        trace_id=trace_id,
-        name="feedback",
-        value=score,
-        comment=comment,
+    #Test for successful creation
+    vectorstore = Milvus(
+        embedding_function=embedding_client,
+        collection_name="LangChainCollection",
+        connection_args={"uri": config.get('preprocessing','MILVUS_URL') }
     )
+    results = vectorstore.similarity_search_with_score("outfit allowance", k=1)
+    for doc, score in results:
+        print(score, doc)
 
-    lf.flush()
-
-# Creates a default metric list for tracing
-def create_trace_metric_list(name,input,output):
-    trace_metric_list = {
-        'name': name,
-        'input': input,
-        'output': output,
-        'model': 'gpt-4.1',
-        'metadata': {
-            "provider": "azure",
-            "model_name": "gpt-4.1",
-            "model_type": "chat",
-        },
-    }
-    return trace_metric_list
-
-# LLM call for title generation
-def GenerateTitle(chat_client,prompt,message,conversation_id,request,messages,title_span ):
-    response, token_usage = chat_client.chat([
-                SystemMessage(content=get_prompt_template('SYS_GEN_TITLE_PROMPT')),
-                HumanMessage(content=prompt+message.message)
-            ])
-    title = response.strip().replace('"', '')
-    
-    trace_metric_list = create_trace_metric_list('GenerateTitle',messages,title)
-    update_span_list(title_span,trace_metric_list)
-
-    title_span.update_trace(
-        name='Title',
-        session_id=f"cnv-{conversation_id}",
-        user_id=request.user.username,
-        input=message.message,
-        output=title
-    )
-    return token_usage, title
-
-# Updates span with default args
-def update_span_list(span,trace_metric_list):
-    span.update(
-        input= trace_metric_list['input'],
-        output= trace_metric_list['output'],
-        model = trace_metric_list['model'],
-        metadata = trace_metric_list['metadata'],
-    )
