@@ -1,0 +1,104 @@
+import server.chat.llm_core as llm_core
+from server.model_source.config import Config
+from openai import AzureOpenAI
+from langfuse import get_client
+from server.model_source.modules.prompts import get_prompt_template
+
+import server.model_source.dcc_ai_search_json as dcc_ai_search_json
+
+import importlib
+importlib.reload(llm_core)
+importlib.reload(dcc_ai_search_json)
+
+
+
+username = "DSP456D"
+query = "Which Parkway Shenton clinic in the Central zone is open on Sundays, and what are its operating hours?"
+
+
+
+system_content = get_prompt_template('SYS_PROMPT')
+conversation_id = 777
+user_id = 'dev_testing_ipynb'
+
+config = Config()
+os.environ["LANGFUSE_PUBLIC_KEY"] = config.get('tracing','LANGFUSE_PUBLIC_KEY')
+os.environ["LANGFUSE_SECRET_KEY"] = config.get('tracing','LANGFUSE_SECRET_KEY')
+os.environ["LANGFUSE_HOST"] = config.get('tracing','LANGFUSE_HOST')
+lf = get_client()
+
+with lf.start_as_current_observation(
+    as_type="span",
+    name="QnA"
+) as start_trace:
+
+    az_openai_client = AzureOpenAI(
+        api_key=config.config['AZURE_OPENAI_API_KEY'],
+        api_version=config.get('models','AZURE_OPENAI_API_VERSION'),
+        azure_endpoint=config.get('models','AZURE_OPENAI_ENDPOINT'),
+    )
+
+    events = list(llm_core.run_conversation_core(
+        messages={"messages":[{"role": "system", "content": system_content}, {"role": "user", "content": query}]},
+        system_content=system_content,
+    ))
+
+    completion_text = ''
+    for event in events:
+        if event[0] == "chunk":
+            completion_text += event[1]
+
+        elif event[0] == "done":
+            _, trace_metric_list, doc_dict, retrieval_list = event[1:]
+
+        else:
+            required_sap_fields = event
+
+# update_span_list(start_trace, trace_metric_list)
+    start_trace.update_trace(
+        input=query,
+        output=completion_text,
+        session_id=f"cnv-{conversation_id}",
+        user_id=user_id
+    )
+
+# start_trace.end()
+    lf.flush()
+    print(completion_text)
+    
+url = "https://ai-gateway.qa.in.spdigital.sg/ai-search"    
+headers = {
+    'Content-Type': 'application/json',
+    'model': 'openai',
+    'subModel': 'text-embedding-3-large',
+    'client-id': 'a3f7b27d767940f8be5f72779912fe03',
+    'client-secret': '2366CCd77d964e82831f5E251678C0Cf',
+    'project': 'HRBuddy',
+    'vector-index': 'spl_hr_buddy_sap'
+}
+payload = json.dumps({
+    "query": username,
+    "searchType": "vector",
+    "vector": {
+        "kind": "vector",
+        "fields": "user_name_vector",
+        "k": 3,
+        "exhaustive": True,
+    },
+    "$select": "user_name",
+    "top": 1
+})
+response = requests.request("POST", url, headers=headers, data=payload)
+
+if response.status_code != 200:
+    print("error {}".format(response.status_code))
+    print(response.text)
+
+matched_user_name = response.json()['value'][0]['user_name']
+print(f"\nMatched user_name: {matched_user_name}")
+
+print(f"Retrieved {len(retrieval_list)} chunks:\n")
+for i, chunk in enumerate(retrieval_list):
+    print(f"[{i+1}] Source : {chunk['title']}")
+    print(f"Section: {chunk['section']}")
+    print()
