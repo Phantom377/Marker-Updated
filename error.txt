@@ -1,66 +1,352 @@
-Benefits of Header-Based Chunking
-1. Respects Document Structure
-The document's own authors decided where section boundaries lie. Using those same boundaries as chunk boundaries means each chunk is a semantically coherent unit — not an arbitrary slice of text cut off mid-sentence or mid-topic. The LLM receives a complete, self-contained section every time.
-2. Stays Within Token Limits
-Large policy documents can run to thousands of words. Sending the full document in one prompt risks exceeding the model's context window, which either causes an error or forces the model to truncate its reading. Chunking ensures each prompt is well within limits, and the model can give its full attention to the section at hand.
-3. More Focused, Higher Quality Questions
-When a model is given a 5,000-word document and asked to generate questions, it tends to produce generic questions that skim the surface. When given a single 400-word section on co-payment structure, it produces precise, detailed questions specific to that section. Chunking dramatically improves question relevance and specificity.
-4. Easier Debugging and Traceability
-If the model produces poor questions for one section, it is immediately clear which chunk was the problem. Each chunk's output is labelled with its section title in the JSON output, making it straightforward to identify, investigate, and reprocess individual sections without re-running the entire document.
-5. Parallelisation Potential
-Because chunks are independent of one another, they can in principle be processed in parallel — sending multiple API calls simultaneously rather than sequentially. This can significantly reduce total processing time for large document libraries.
-6. Section-Level Granularity in Output
-The chunked approach produces a nested JSON output organised by section. This is directly useful for chatbot testing because it allows the QA team to test the chatbot's knowledge of specific policy sections, not just the document as a whole. A test failure can be traced back to a specific section, making it easier to identify gaps in the chatbot's training data.
-7. Handles Long Documents Gracefully
-A document with ten ## sections becomes ten focused prompts. Whether the document is 2 pages or 20 pages, the pipeline handles it consistently — the number of API calls scales with the number of sections, and each call remains predictably sized.
+import os
+import logging
+import time
+import json
+from typing import List
+from datetime import datetime
+from dateutil import tz
 
-Markdown for Standard LLMs vs. PDF in Microsoft Copilot
+from pydantic import BaseModel, Field
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.runnables import RunnablePassthrough
 
-Overview
-When building AI pipelines that process documents, the choice of input format is not just a technical detail — it directly affects the quality, cost, and reliability of the output. Two common approaches are feeding converted Markdown text to a standard LLM via API, and uploading the original PDF directly to Microsoft Copilot, which has built-in document understanding capabilities. Both work, but they are suited to different contexts and come with different trade-offs.
+from langfuse import Langfuse
+from langfuse import get_client
 
-Markdown with a Standard LLM
-How It Works
-In this approach, the PDF is first converted to Markdown using a tool such as pymupdf4llm or marker. The resulting Markdown text is then included directly in the prompt sent to the LLM — either as the full document or as chunks split by header. The model reads the text as part of its context window and generates a response based on what it has been given.
-The model has no special knowledge of the original document. It only knows what is in the prompt. If the Markdown conversion was accurate, the model works with a clean, structured representation of the policy. If the conversion introduced errors — garbled tables, merged paragraphs, missing headers — those errors are passed directly to the model and reflected in its output.
-Strengths
-Full control over the pipeline. Every step is explicit and inspectable. You can read the Markdown, verify it looks correct, adjust the chunking logic, and tune the prompt before any API call is made. There are no black boxes.
-Consistent, reproducible behaviour. Because the text is injected directly into the prompt, the same input always produces a deterministic response (at a given temperature setting). This is important for testing pipelines where consistency matters.
-Works with any LLM. The Markdown approach is model-agnostic. The same converted files and prompts can be used with GPT-4o via Azure, Claude via Anthropic's API, Llama via Ollama, or any other model. You are not locked into a single vendor's ecosystem.
-Cost transparency. You know exactly how many tokens you are sending because you control the text. Chunking allows you to keep costs predictable by limiting prompt size per API call.
-Programmable and automatable. The entire pipeline — reading files, chunking, calling the API, writing JSON output — can be scripted and run automatically on a schedule or triggered by a webhook. No manual steps are required.
-Handles bulk processing efficiently. A folder of 50 policy documents can be processed overnight with no human involvement. Each document is read, chunked, queried, and its output saved to a JSON file automatically.
-Weaknesses
-Conversion quality is a dependency. The pipeline is only as good as the Markdown conversion. Complex PDFs with multi-column layouts, embedded images containing text, scanned pages, or heavily styled tables may not convert cleanly. Errors in the Markdown silently degrade output quality.
-No visual understanding. A standard LLM reading Markdown text cannot interpret charts, diagrams, or images embedded in the original PDF. If a policy document contains a benefits table rendered as an image rather than text, that information is invisible to the model.
-Context window limits. Very long documents must be chunked or summarised before being sent. While chunking is manageable, it requires additional engineering and means the model never has a view of the entire document at once.
-Prompt engineering overhead. Getting reliable, well-structured output requires careful prompt design. This takes iteration and expertise, and prompts may need to be adjusted as documents vary in structure.
+from modules.embeddings import EmbeddingClient
+from modules.models import ChatClient
+from modules.database import RetrieverWithScores, VectorStore
+from modules.prompts import get_prompt_template
+from model_source.modules.models import ChatClient, HumanMessage, SystemMessage
+from config import Config
 
-PDF Upload in Microsoft Copilot
-How It Works
-Microsoft Copilot — available in Microsoft 365 apps such as Word, Teams, and the Copilot web interface — allows users to upload a PDF directly. Copilot uses Azure AI Document Intelligence (formerly Form Recogniser) under the hood to parse the PDF before the LLM ever sees it. This parsing step extracts not just text, but layout information including heading levels, table structure, and the spatial relationship between elements on the page. The LLM then receives a structured representation of the document, not raw bytes.
-The user interacts conversationally — asking questions, requesting summaries, or requesting comparisons — and Copilot responds based on its understanding of the uploaded document.
-Strengths
-Native PDF understanding. Copilot's document parsing layer handles the conversion step automatically and uses Microsoft's production-grade OCR and layout analysis. For well-formatted PDFs, this produces high-fidelity extraction including tables, headings, and multi-column text, without any manual conversion work.
-Handles scanned documents. Because Copilot uses OCR, it can extract text from scanned PDFs that are essentially images of pages — something that basic PDF-to-text libraries cannot reliably do.
-No technical setup required. A non-technical HR team member can upload a PDF and start asking questions immediately. There is no pipeline to build, no code to write, and no server to run. The barrier to entry is extremely low.
-Conversational interface. Users can ask follow-up questions, request clarifications, and explore the document interactively. This is well-suited to ad-hoc queries where the user does not know in advance what they want to ask.
-Integrated into existing workflows. For organisations already using Microsoft 365, Copilot is accessible directly within Word, Outlook, and Teams. There is no context switching to a separate tool.
-Visual element awareness. Copilot's document intelligence layer can recognise and describe charts, images, and diagrams that are part of the PDF layout, giving it an advantage over text-only Markdown pipelines when documents contain visual content.
-Weaknesses
-No programmatic control. Copilot is an interactive product, not an API you can call in a script. It cannot be triggered automatically, cannot process a folder of 50 documents overnight, and cannot write its output to a structured JSON file. Every interaction requires a human in the loop.
-Output is conversational, not structured. Copilot returns natural language responses. If you need structured output — such as a JSON array of 25 questions with consistent field names — you would need to manually copy, reformat, and validate the output. There is no guarantee of consistent structure across sessions.
-Vendor lock-in. The approach only works within the Microsoft 365 ecosystem. It cannot be replicated with a different LLM or on a different platform without significant rework.
-Limited transparency. You cannot inspect exactly what text the document parser extracted, how it structured the content, or what was passed to the model. If the output is wrong, it is difficult to diagnose whether the fault lies in the PDF parsing, the model's reasoning, or the prompt interpretation.
-Cost model is different. Copilot is licensed per user per month as part of Microsoft 365 Copilot, rather than being billed per token. For large-scale automated processing, this model is inefficient — you are paying for a user licence regardless of how much or how little processing is done.
-Context window constraints still apply. Very large PDFs may be truncated or summarised by Copilot before being presented to the model, and you have no control over how this is handled. With a Markdown pipeline you decide the chunking strategy; with Copilot, Microsoft decides.
-Not suitable for automated testing pipelines. Because Copilot is interactive and conversational, it cannot be integrated into a CI/CD pipeline or automated testing framework. It is a productivity tool, not an engineering component.
+from openai import OpenAI
 
-Side-by-Side Comparison
-DimensionMarkdown + Standard LLMPDF in Microsoft CopilotSetup complexityModerate — requires pipeline codeNone — upload and askAutomationFully automatableManual onlyOutput formatStructured JSONConversational textBulk processingYes — entire foldersNo — one document at a timeVendor flexibilityAny LLMMicrosoft 365 onlyScanned PDF supportLimited without OCR stepYes, built-in OCRVisual content (charts, images)NoPartialTransparency and debuggabilityHighLowCost modelPay per tokenPer-user monthly licenceBest suited forAutomated pipelines, testing frameworks, bulk generationAd-hoc queries, non-technical users, one-off document exploration
+logger = logging.getLogger(__name__)
 
-Which to Use
-The two approaches are not in competition — they serve different purposes and are often used together within the same organisation.
-Use Markdown with a standard LLM when you need automation, reproducibility, and structured output at scale. This is the right choice for the HR question generation pipeline, where dozens of policy documents must be processed programmatically and their outputs written to JSON files for chatbot testing.
-Use PDF in Copilot when a non-technical team member needs to explore a single document conversationally — asking ad-hoc questions, generating a quick summary, or checking a specific clause without any engineering overhead. It is a productivity accelerator, not a pipeline component.
-For the HR chatbot testing initiative specifically, the Markdown pipeline is the appropriate foundation. Copilot can serve as a complementary tool for the HR team's day-to-day document queries, but it cannot replace the automated, structured question generation that the testing framework requires.
+config = Config()
+embedding_client = EmbeddingClient(
+    provider='azure',
+    api_key=config.config['AZURE_OPENAI_API_KEY'],
+    api_endpoint=config.get('models','AZURE_OPENAI_ENDPOINT'),
+    api_version=config.get('models','AZURE_OPENAI_API_VERSION'),
+    deployment=config.get('models','AZURE_OPENAI_DEPLOYMENT')
+)
+chat_client = ChatClient(
+    provider="azure",
+    api_key=config.config['AZURE_OPENAI_API_KEY'],
+    api_endpoint=config.get('models','AZURE_OPENAI_ENDPOINT'),
+    api_version=config.get('models','AZURE_OPENAI_API_VERSION'),
+    deployment_name=config.get('models','AZURE_OPENAI_CHAT_DEPLOYMENT'),
+    )
+
+os.environ["LANGFUSE_PUBLIC_KEY"] = config.get('tracing','LANGFUSE_PUBLIC_KEY')
+os.environ["LANGFUSE_SECRET_KEY"] = config.get('tracing','LANGFUSE_SECRET_KEY')
+os.environ["LANGFUSE_HOST"] = config.get('tracing','LANGFUSE_HOST')
+
+lf = get_client()
+
+client = OpenAI(
+    base_url=config.get('OpenAI', 'URL'),
+    api_key="dummy",  # Required but not used
+    default_headers={
+        'model': 'openai',
+        'subModel': config.get('OpenAI', 'MODEL'),
+        'client-id': config.get('OpenAI', 'client_id'),
+        'client-secret': config.get('OpenAI', 'client_secret'),
+        'api-version': config.get('OpenAI', 'API_VERSION')
+
+    }
+)
+
+JSON_FOLDER = os.path.join(os.path.expanduser("~"), "Downloads", "llm_resending", "output_json")
+TOP_K = 5
+
+def _load_all_chunks() -> list[dict]:
+    """Load all chunks from every JSON file in output_json."""
+    all_chunks = []
+    for fname in os.listdir(JSON_FOLDER):
+        if fname.endswith(".json"):
+            with open(os.path.join(JSON_FOLDER, fname), "r", encoding="utf-8") as f:
+                chunks = json.load(f)
+            all_chunks.extend(chunks)
+    return all_chunks
+
+def _score_chunk(chunk: dict, query_terms: list[str]) -> int:
+    """Count how many query terms appear in the chunk content (case-insensitive)."""
+    content_lower = chunk.get("content", "").lower()
+    return sum(1 for term in query_terms if term in content_lower)
+
+def DB_search(query) -> list[dict]:
+    with lf.start_as_current_observation(
+        as_type="retriever",
+        name="DBSearch"
+    ) as DBSearch_span:
+        retrieval_list = []
+        try:
+            query_terms = query.lower().split()
+            all_chunks = _load_all_chunks()
+
+            # Step 1: Score all chunks and take top-K to identify relevant sources
+            scored = sorted(
+                all_chunks,
+                key=lambda c: _score_chunk(c, query_terms),
+                reverse=True
+            )
+            top_chunks = scored[:TOP_K]
+
+            # Step 2: Collect unique source PDFs from the top-K chunks,
+            # preserving order so the most relevant source comes first
+            seen_sources = set()
+            relevant_sources = []
+            for chunk in top_chunks:
+                source = chunk.get("metadata", {}).get("source", chunk.get("section", "Unknown"))
+                if source not in seen_sources:
+                    seen_sources.add(source)
+                    relevant_sources.append(source)
+
+            # Step 3: Group all chunks by source
+            from collections import defaultdict
+            chunks_by_source = defaultdict(list)
+            for chunk in all_chunks:
+                source = chunk.get("metadata", {}).get("source", chunk.get("section", "Unknown"))
+                if source in seen_sources:
+                    chunks_by_source[source].append(chunk)
+
+            # Step 4: Build retrieval list — all chunks from each relevant source,
+            # ordered by source relevance (most relevant source first)
+            for source in relevant_sources:
+                for chunk in chunks_by_source[source]:
+                    retrieval_list.append({
+                        "title": source,
+                        "section": chunk.get("section", ""),
+                        "link":  chunk.get("metadata", {}).get("link", ""),
+                        "content": chunk.get("content", ""),
+                        "context": chunk.get("context", ""),
+                        "date_updated": str(datetime(9999, 1, 1)),
+                    })
+
+            print(f"DB_search: top-{TOP_K} chunks matched {len(relevant_sources)} source(s): {relevant_sources}")
+            print(f"DB_search: sending {len(retrieval_list)} total chunks to LLM")
+
+        except Exception as e:
+            print(f"Error found: {e}")
+            return []
+
+        DBSearch_span.update(input=query, output=retrieval_list)
+        return retrieval_list
+
+def query_rewrite(msg_list):
+
+    # start Langfuse tracing of user query rewrite
+    
+    with lf.start_as_current_observation(
+        as_type="generation",
+        name="QueryRewrite",
+        model=config.get('OpenAI', 'QUERY_REWRITE_MODEL')
+    ) as rewrite_span:
+
+        if len(msg_list) <= 1:
+            logger.warning(f"Skipping query rewrite: {msg_list[-1]['content']}")
+            # rewrite_span.end()
+            return
+        
+        _query_list = []
+        for m in msg_list:
+            if m['role'] == 'system':
+                continue
+            elif m['role'] == 'assistant':
+                _query_list.append(f"{m['role']}: {m['content'].split('__References__')[0]}")
+            else:
+                _query_list.append(f"{m['role']}: {m['content']}")
+
+        # Query Rewrite
+        rewrite_msg_list = [
+            {
+                'role': 'system',
+                'content': get_prompt_template('SYS_PROMPT_REWRITE')
+            },
+            {
+                'role': 'user',
+                'content': '\n'.join(_query_list)
+            }
+        ]
+        response = client.chat.completions.create(
+            messages=rewrite_msg_list,
+            model=config.get('OpenAI', 'MODEL'),
+            temperature=0,
+            max_tokens=500
+        )
+        new_query_str = response.choices[0].message.content
+
+        msg_list[-1]['content'] = new_query_str
+        # trace_metric_list = create_trace_metric_list('QueryRewrite',rewrite_msg_list,new_query_str)
+        # update_span_list(rewrite_span,trace_metric_list)
+        rewrite_span.update(input=rewrite_msg_list, output=new_query_str)
+
+        return 
+
+
+def dcc_prepare_chat_messages(
+        msg_list,
+        system_content,
+        doc_dict = {},
+        retrieval_list_out = None
+    ):
+    '''
+    For chat, rewrite the query string, then retrieve contexts from DBSearch
+    and return the updated messages.
+    '''
+    # Query rewrite disabled — not needed for local JSON retrieval
+    query_str = msg_list[-1]['content']
+
+    # Retrieve Contexts
+    retrieval_list = DB_search(query_str)
+    if retrieval_list_out is not None:
+        retrieval_list_out.extend(retrieval_list)
+  
+    ind = 0
+    for i in retrieval_list:
+        if i["title"] not in doc_dict:
+            ind += 1
+            # alink = '<a href="'+i["link"]+'" target="_blank">'+i["title"]+'</a>'
+            doc_dict[i['title']] = {
+                'text': f'* [{ind}] [{i["title"]}]({i["link"]}) - Last Updated: {datetime.fromisoformat(i["date_updated"]).strftime("%d %b %Y")}',
+                #'text': f'* [{ind}] {alink}',
+                'index': ind
+            }
+
+    # Prepare new context
+    context_str = ''
+    for i in retrieval_list:
+        # if i['score'] < 0.01:
+        #     continue
+        context_str += get_prompt_template('CONTEXT_TEMPLATE',
+                                            counter=doc_dict[i['title']]['index'],
+                                            title=i['title'],
+                                            content=i['content']
+                                            )
+
+    _query_list = []
+    for m in msg_list:
+        if m['role'] == 'system':
+            continue
+        elif m['role'] == 'assistant':
+            _query_list.append(
+                f"{m['role']}: {m['content'].split('__References__')[0]}"
+            )
+        else:
+            _query_list.append(
+                f"{m['role']}: {m['content']}"
+            )
+    new_query_str = get_prompt_template('RAG_PROMPT_TEMPLATE',context_str=context_str,query_str='\n'.join(_query_list))
+
+    # Update query
+    return  (
+        [
+            {"role": "system", "content": system_content},
+            {"role": "user", "content": new_query_str},
+        ]
+    )
+
+
+class PredictiveQuestion(BaseModel):
+    probability: float = Field(description="probability")
+    question: str = Field(description="question")
+
+
+class PredictiveQuestions(BaseModel):
+    questions: List[PredictiveQuestion] = Field(description="list of predictive questions")
+
+
+def get_predictive_question_generator(llm):
+
+    # output_parser = PydanticToolsParser(tools=[PredictiveQuestions])
+
+    prompt = ChatPromptTemplate.from_messages(
+        [
+            ("system", get_prompt_template('SYS_PROMPT_PREDICTIVE')),
+            ("user", "{context}"),
+        ]
+    )
+
+    structured_llm = llm.with_structured_output(PredictiveQuestions)
+
+    predictor = {"context": RunnablePassthrough()} | prompt | structured_llm
+    return predictor
+
+
+DEFAULT_METADATA = {
+    "ls_provider": "azure",
+    "ls_model_name": "gpt-4o",
+    "ls_model_type": "chat",
+}
+
+DEFAULT_MODEL_PARAMETERS = {
+    "maxTokens": 1024,
+    "temperature": 0,
+    "top_p": 1,
+    "frequency_penalty": 0,
+    "presence_penalty": 0,
+}
+
+# Creates score on Langfuse for tracing user feedback
+def trace_score(dcc_config, trace_id, score, comment):
+    os.environ["LANGFUSE_PUBLIC_KEY"] = dcc_config.get('tracing','LANGFUSE_PUBLIC_KEY')
+    os.environ["LANGFUSE_SECRET_KEY"] = dcc_config.get('tracing','LANGFUSE_SECRET_KEY')
+    os.environ["LANGFUSE_HOST"] = dcc_config.get('tracing','LANGFUSE_HOST')
+
+    lf = get_client()
+
+    lf.create_score(
+        trace_id=trace_id,
+        name="feedback",
+        value=score,
+        comment=comment,
+    )
+
+    lf.flush()
+
+# Creates a default metric list for tracing
+def create_trace_metric_list(name,input,output):
+    trace_metric_list = {
+        'name': name,
+        'input': input,
+        'output': output,
+        'model': 'gpt-4.1',
+        'metadata': {
+            "provider": "azure",
+            "model_name": "gpt-4.1",
+            "model_type": "chat",
+        },
+    }
+    return trace_metric_list
+
+# LLM call for title generation
+def GenerateTitle(chat_client,prompt,message,conversation_id,request,messages,title_span ):
+    response, token_usage = chat_client.chat([
+                SystemMessage(content=get_prompt_template('SYS_GEN_TITLE_PROMPT')),
+                HumanMessage(content=prompt+message.message)
+            ])
+    title = response.strip().replace('"', '')
+    
+    trace_metric_list = create_trace_metric_list('GenerateTitle',messages,title)
+    update_span_list(title_span,trace_metric_list)
+
+    title_span.update_trace(
+        name='Title',
+        session_id=f"cnv-{conversation_id}",
+        user_id=request.user.username,
+        input=message.message,
+        output=title
+    )
+    return token_usage, title
+
+# Updates span with default args
+def update_span_list(span,trace_metric_list):
+    span.update(
+        input= trace_metric_list['input'],
+        output= trace_metric_list['output'],
+        model = trace_metric_list['model'],
+        metadata = trace_metric_list['metadata'],
+    )
