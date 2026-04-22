@@ -72,46 +72,54 @@ def _load_all_chunks() -> list[dict]:
             all_chunks.extend(chunks)
     return all_chunks
 
-def _score_chunk(chunk: dict, query_terms: list[str]) -> tuple:
-    """
-    Returns a (section_score, content_score) tuple.
-    Sorting by this tuple ranks section matches first, with content as a tiebreaker.
-    """
-    section_lower = chunk.get("section", "").lower()
-    content_lower = chunk.get("content", "").lower()
-    section_score = sum(1 for term in query_terms if term in section_lower)
-    content_score = sum(1 for term in query_terms if term in content_lower)
-    return (section_score, content_score)
-
-def DB_search(query) -> list[dict]:
+def DB_search(query: str, question_section: str = "") -> list[dict]:
     with lf.start_as_current_observation(
         as_type="retriever",
         name="DBSearch"
     ) as DBSearch_span:
         retrieval_list = []
         try:
-            query_terms = query.lower().split()
             all_chunks = _load_all_chunks()
+            q_sec = question_section.strip().lower()
 
-            # Score all chunks and pick the single highest-scoring chunk
-            scored = sorted(
-                all_chunks,
-                key=lambda c: _score_chunk(c, query_terms),
-                reverse=True
+            # If the question has no section, skip retrieval — LLM will say it doesn't know
+            if not q_sec:
+                print("DB_search: question has no section — skipping retrieval")
+                DBSearch_span.update(input=query, output=[])
+                return []
+
+            # Only consider chunks that have a non-empty section header
+            candidates = [c for c in all_chunks if c.get("section", "").strip()]
+
+            # Match: question section appears in chunk section, or vice versa (case-insensitive)
+            matched = [
+                c for c in candidates
+                if q_sec in c.get("section", "").lower()
+                or c.get("section", "").lower() in q_sec
+            ]
+
+            if not matched:
+                print(f"DB_search: no chunk section matched '{question_section}' — skipping retrieval")
+                DBSearch_span.update(input=query, output=[])
+                return []
+
+            # Among matched chunks, pick the one with the highest content keyword score
+            query_terms = query.lower().split()
+            best_chunk = max(
+                matched,
+                key=lambda c: sum(1 for t in query_terms if t in c.get("content", "").lower())
             )
-            best_chunk = scored[0] if scored else None
 
-            if best_chunk:
-                source = best_chunk.get("metadata", {}).get("source", best_chunk.get("section", "Unknown"))
-                retrieval_list.append({
-                    "title":        source,
-                    "section":      best_chunk.get("section", ""),
-                    "link":         best_chunk.get("metadata", {}).get("link", ""),
-                    "content":      best_chunk.get("content", ""),
-                    "context":      best_chunk.get("context", ""),
-                    "date_updated": str(datetime(9999, 1, 1)),
-                })
-                print(f"DB_search: best chunk → [{source}] {best_chunk.get('section', '')}")
+            source = best_chunk.get("metadata", {}).get("source", "Unknown")
+            retrieval_list.append({
+                "title":        source,
+                "section":      best_chunk.get("section", ""),
+                "link":         best_chunk.get("metadata", {}).get("link", ""),
+                "content":      best_chunk.get("content", ""),
+                "context":      best_chunk.get("context", ""),
+                "date_updated": str(datetime(9999, 1, 1)),
+            })
+            print(f"DB_search: matched chunk → [{source}] {best_chunk.get('section', '')}")
 
         except Exception as e:
             print(f"Error found: {e}")
@@ -175,17 +183,18 @@ def dcc_prepare_chat_messages(
         msg_list,
         system_content,
         doc_dict = {},
-        retrieval_list_out = None
+        retrieval_list_out = None,
+        question_section: str = "",
     ):
     '''
-    For chat, rewrite the query string, then retrieve contexts from DBSearch
-    and return the updated messages.
+    For chat, retrieve the chunk whose section matches question_section and
+    return the updated messages. If no section match is found, the context
+    will be empty and the LLM is instructed not to hallucinate.
     '''
-    # Query rewrite disabled — not needed for local JSON retrieval
     query_str = msg_list[-1]['content']
 
-    # Retrieve Contexts
-    retrieval_list = DB_search(query_str)
+    # Retrieve context — matched by section header
+    retrieval_list = DB_search(query_str, question_section=question_section)
     if retrieval_list_out is not None:
         retrieval_list_out.extend(retrieval_list)
   
@@ -202,22 +211,19 @@ def dcc_prepare_chat_messages(
 
     # Prepare new context
     context_str = ''
-    has_empty_section = False
     for i in retrieval_list:
         context_str += get_prompt_template('CONTEXT_TEMPLATE',
                                             counter=doc_dict[i['title']]['index'],
                                             title=i['title'],
                                             content=i['content']
                                             )
-        if not i.get('section', '').strip():
-            has_empty_section = True
 
-    # If the retrieved chunk has no section header, warn the LLM not to hallucinate
-    if has_empty_section:
-        context_str += (
-            "\n\n[INSTRUCTION: The retrieved content above does not correspond to a specific "
-            "policy section. If it is insufficient to answer the query, respond with: "
-            "'I'm sorry, I don't have enough information to answer this question. "
+    # If no chunk was matched (empty question section or no section match),
+    # instruct the LLM not to hallucinate
+    if not retrieval_list:
+        context_str = (
+            "[INSTRUCTION: No policy content was found that matches this question. "
+            "Respond with: 'I'm sorry, I don't have enough information to answer this question. "
             "Please contact HR directly for assistance.' Do not make assumptions or invent details.]"
         )
 
