@@ -1,7 +1,7 @@
 import server.chat.llm_core as llm_core
 import server.model_source.dcc_ai_search_json as dcc_ai_search_json
 from server.model_source.config import Config
-from openai import AzureOpenAI
+from openai import OpenAI, AzureOpenAI
 from langfuse import get_client
 from server.model_source.modules.prompts import get_prompt_template
 import importlib
@@ -9,21 +9,30 @@ importlib.reload(llm_core)
 importlib.reload(dcc_ai_search_json)
 
 config = Config()
-az_openai_client = AzureOpenAI(
-    api_key=config.config['AZURE_OPENAI_API_KEY'],
-    api_version=config.get('models','AZURE_OPENAI_API_VERSION'),
-    azure_endpoint=config.get('models','AZURE_OPENAI_ENDPOINT'),
-)
 lf = get_client()
 system_content = get_prompt_template('SYS_PROMPT')
 debug_query = "I am going to have my first child soon. What leave can I get?"
 
-# --- Test 1: Query alone (no retrieval, no chunks) ---
+# Use the SAME gateway client that run_conversation_core uses
+gateway_client = OpenAI(
+    base_url=config.get('OpenAI', 'URL'),
+    api_key="dummy",
+    default_headers={
+        'model': 'openai',
+        'subModel': config.get('OpenAI', 'MODEL'),
+        'client-id': config.get('OpenAI', 'client_id'),
+        'client-secret': config.get('OpenAI', 'client_secret'),
+        'api-version': config.get('OpenAI', 'API_VERSION'),
+        'project': 'HRBuddy'
+    }
+)
+
+# --- Test 1: Query + system prompt only (no chunks) through gateway ---
 print("=" * 60)
-print("[Test 1] Query sent directly to LLM with no retrieved chunks...")
+print("[Test 1] Query + system prompt through GATEWAY (no chunks)...")
 try:
-    response = az_openai_client.chat.completions.create(
-        model="gpt-4o",
+    response = gateway_client.chat.completions.create(
+        model=config.get('OpenAI', 'MODEL'),
         messages=[
             {"role": "system", "content": system_content},
             {"role": "user",   "content": debug_query},
@@ -33,46 +42,43 @@ try:
     )
     print(f"  ✓ OK — response: {response.choices[0].message.content[:100]}")
 except Exception as e:
-    print(f"  ✗ FAILED — PII likely in the query or system prompt\n  Error: {e}")
+    print(f"  ✗ FAILED — PII in query or system prompt\n  Error: {e}")
 
-# --- Test 2: Retrieval only (no LLM call) ---
-print("\n[Test 2] DB_search retrieval only (no LLM)...")
+# --- Test 2: Retrieval only (no LLM) ---
+print("\n[Test 2] DB_search retrieval (no LLM)...")
 try:
     retrieval_list = dcc_ai_search_json.DB_search(debug_query)
-    print(f"  ✓ OK — retrieved {len(retrieval_list)} chunks")
+    print(f"  ✓ OK — {len(retrieval_list)} chunks retrieved")
     for i, c in enumerate(retrieval_list):
         print(f"    [{i+1}] {c['title']} | {c['section']}")
 except Exception as e:
-    print(f"  ✗ FAILED — Error during retrieval\n  Error: {e}")
+    print(f"  ✗ FAILED\n  Error: {e}")
 
-# --- Test 3: Full prompt with chunks injected (print before sending) ---
-print("\n[Test 3] Inspect full prompt sent to LLM (chunks injected)...")
+# --- Test 3: Inspect full prompt (chunks injected) ---
+print("\n[Test 3] Inspect full prompt with chunks injected...")
 try:
-    messages_copy = {"messages": [
-        {"role": "system", "content": system_content},
-        {"role": "user",   "content": debug_query},
-    ]}
     doc_dict = {}
     built_messages = dcc_ai_search_json.dcc_prepare_chat_messages(
-        messages_copy["messages"], system_content, doc_dict=doc_dict
+        [{"role": "system", "content": system_content},
+         {"role": "user",   "content": debug_query}],
+        system_content, doc_dict=doc_dict
     )
     user_content = built_messages[-1]["content"]
-    print(f"  Full user message sent to LLM ({len(user_content)} chars):")
+    print(f"  Prompt length: {len(user_content)} chars")
     print(f"  --- FIRST 500 CHARS ---\n{user_content[:500]}")
     print(f"  --- LAST 500 CHARS ---\n{user_content[-500:]}")
 except Exception as e:
     print(f"  ✗ FAILED\n  Error: {e}")
 
-# --- Test 4: Send full prompt with chunks to LLM ---
-print("\n[Test 4] Full prompt with chunks sent to LLM...")
+# --- Test 4: Full prompt with chunks through GATEWAY ---
+print("\n[Test 4] Full prompt with chunks through GATEWAY...")
 try:
-    response = az_openai_client.chat.completions.create(
-        model="gpt-4o",
+    response = gateway_client.chat.completions.create(
+        model=config.get('OpenAI', 'MODEL'),
         messages=built_messages,
         max_tokens=100,
         temperature=0,
     )
     print(f"  ✓ OK — response: {response.choices[0].message.content[:100]}")
 except Exception as e:
-    print(f"  ✗ FAILED — PII likely in the retrieved chunks\n  Error: {e}")
-
+    print(f"  ✗ FAILED — PII in retrieved chunks\n  Error: {e}")
