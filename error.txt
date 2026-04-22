@@ -183,7 +183,16 @@ def debug_pipeline(query: str, system_content: str, az_openai_client, start_trac
     return personalized_text
 
 
-def run_pipeline(query: str, system_content: str, az_openai_client, lf, start_trace, az_model: str) -> str:
+def run_pipeline(query: str, system_content: str, azure_config: dict, start_trace, az_model: str) -> str:
+    # Create a fresh client per question so abandoned connections from timeouts
+    # don't exhaust the shared connection pool
+    az_openai_client = AzureOpenAI(
+        api_key=azure_config['api_key'],
+        api_version=azure_config['api_version'],
+        azure_endpoint=azure_config['azure_endpoint'],
+        timeout=TIMEOUT_SECONDS,
+    )
+
     # Step 1 — Generate draft + retrieve chunks (via Azure OpenAI directly)
     events = list(llm_core.run_conversation_core(
         messages={"messages": [
@@ -207,7 +216,7 @@ def run_pipeline(query: str, system_content: str, az_openai_client, lf, start_tr
     # Step 2 — Identify required SAP fields from policy chunks
     required_sap_fields = llm_core.identify_required_personalization_fields(
         az_openai_client=az_openai_client,
-        model_name="gpt-4o",
+        model_name=az_model,
         retrieval_list=retrieval_list,
         start_trace=start_trace,
     )
@@ -223,7 +232,7 @@ def run_pipeline(query: str, system_content: str, az_openai_client, lf, start_tr
     if employee_data:
         personalized_text = llm_core.personalize_response(
             az_openai_client=az_openai_client,
-            model_name="gpt-4o",
+            model_name=az_model,
             query=query,
             retrieval_list=retrieval_list,
             employee_data=employee_data,
@@ -244,12 +253,11 @@ def main():
     lf = get_client()
     system_content = get_prompt_template('SYS_PROMPT')
 
-    az_openai_client = AzureOpenAI(
-        api_key=config.config['AZURE_OPENAI_API_KEY'],
-        api_version=config.get('models', 'AZURE_OPENAI_API_VERSION'),
-        azure_endpoint=config.get('models', 'AZURE_OPENAI_ENDPOINT'),
-        timeout=TIMEOUT_SECONDS,
-    )
+    azure_config = {
+        'api_key':        config.config['AZURE_OPENAI_API_KEY'],
+        'api_version':    config.get('models', 'AZURE_OPENAI_API_VERSION'),
+        'azure_endpoint': config.get('models', 'AZURE_OPENAI_ENDPOINT'),
+    }
     az_model = config.get('models', 'AZURE_OPENAI_CHAT_DEPLOYMENT')
 
     files = load_queries_by_file()
@@ -274,7 +282,7 @@ def main():
                 with lf.start_as_current_observation(as_type="span", name="QnA") as start_trace:
                     executor = ThreadPoolExecutor(max_workers=1)
                     future = executor.submit(
-                        run_pipeline, query, system_content, az_openai_client, lf, start_trace, az_model
+                        run_pipeline, query, system_content, azure_config, start_trace, az_model
                     )
                     try:
                         personalized_text = future.result(timeout=TIMEOUT_SECONDS)
@@ -325,3 +333,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
