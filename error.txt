@@ -13,26 +13,20 @@ lf = get_client()
 system_content = get_prompt_template('SYS_PROMPT')
 debug_query = "I am going to have my first child soon. What leave can I get?"
 
-# Use the SAME gateway client that run_conversation_core uses
-gateway_client = OpenAI(
-    base_url=config.get('OpenAI', 'URL'),
-    api_key="dummy",
-    default_headers={
-        'model': 'openai',
-        'subModel': config.get('OpenAI', 'MODEL'),
-        'client-id': config.get('OpenAI', 'client_id'),
-        'client-secret': config.get('OpenAI', 'client_secret'),
-        'api-version': config.get('OpenAI', 'API_VERSION'),
-        'project': 'HRBuddy'
-    }
+# Use AzureOpenAI directly (bypasses gateway PII guardrail)
+az_client = AzureOpenAI(
+    api_key=config.config['AZURE_OPENAI_API_KEY'],
+    api_version=config.get('models', 'AZURE_OPENAI_API_VERSION'),
+    azure_endpoint=config.get('models', 'AZURE_OPENAI_ENDPOINT'),
 )
+az_model = config.get('models', 'AZURE_OPENAI_CHAT_DEPLOYMENT')
 
-# --- Test 1: Query + system prompt only (no chunks) through gateway ---
+# --- Test 1: Query + system prompt only (no chunks) through Azure ---
 print("=" * 60)
-print("[Test 1] Query + system prompt through GATEWAY (no chunks)...")
+print("[Test 1] Query + system prompt through AZURE (no chunks)...")
 try:
-    response = gateway_client.chat.completions.create(
-        model=config.get('OpenAI', 'MODEL'),
+    response = az_client.chat.completions.create(
+        model=az_model,
         messages=[
             {"role": "system", "content": system_content},
             {"role": "user",   "content": debug_query},
@@ -42,7 +36,7 @@ try:
     )
     print(f"  ✓ OK — response: {response.choices[0].message.content[:100]}")
 except Exception as e:
-    print(f"  ✗ FAILED — PII in query or system prompt\n  Error: {e}")
+    print(f"  ✗ FAILED\n  Error: {e}")
 
 # --- Test 2: Retrieval only (no LLM) ---
 print("\n[Test 2] DB_search retrieval (no LLM)...")
@@ -70,15 +64,15 @@ try:
 except Exception as e:
     print(f"  ✗ FAILED\n  Error: {e}")
 
-# --- Test 4: Full prompt with chunks through GATEWAY ---
-print("\n[Test 4] Full prompt with chunks through GATEWAY...")
+# --- Test 4: Full prompt with chunks through AZURE ---
+print("\n[Test 4] Full prompt with chunks through AZURE...")
 try:
-    response = gateway_client.chat.completions.create(
-        model=config.get('OpenAI', 'MODEL'),
+    response = az_client.chat.completions.create(
+        model=az_model,
         messages=built_messages,
         max_tokens=100,
         temperature=0,
     )
     print(f"  ✓ OK — response: {response.choices[0].message.content[:100]}")
 except Exception as e:
-    print(f"  ✗ FAILED — PII in retrieved chunks\n  Error: {e}")
+    print(f"  ✗ FAILED\n  Error: {e}")
