@@ -1,352 +1,342 @@
+import sys
 import os
-import logging
-import time
 import json
-from typing import List
+import ast
+import requests
 from datetime import datetime
-from dateutil import tz
+from pathlib import Path
+from cryptography.fernet import Fernet
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 
-from pydantic import BaseModel, Field
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.runnables import RunnablePassthrough
+TIMEOUT_SECONDS = 90
 
-from langfuse import Langfuse
+# --- Path setup ---
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(PROJECT_ROOT / "src"))
+sys.path.insert(0, str(PROJECT_ROOT / "src" / "server"))
+
+import server.chat.llm_core as llm_core
+from server.model_source.config import Config
+from openai import AzureOpenAI
 from langfuse import get_client
+from server.model_source.modules.prompts import get_prompt_template
 
-from modules.embeddings import EmbeddingClient
-from modules.models import ChatClient
-from modules.database import RetrieverWithScores, VectorStore
-from modules.prompts import get_prompt_template
-from model_source.modules.models import ChatClient, HumanMessage, SystemMessage
-from config import Config
+# --- Fixed config ---
+USERNAME        = "ESP567E"
+SAP_URL         = "https://ai-gateway.qa.in.spdigital.sg/ai-search"
+SAP_DATA_KEY    = "ctWsiFNflfxvD4MWvVt0CqKKs0mYr1SWYe4kk-GV9Oo="
 
-from openai import OpenAI
+BASE_DIR        = Path(__file__).resolve().parent
+QUERIES_FOLDER  = BASE_DIR / "input_queries"
+ANSWERED_FOLDER = BASE_DIR / "answered"
+ANSWERED_FOLDER.mkdir(exist_ok=True)
 
-logger = logging.getLogger(__name__)
+SAP_HEADERS = {
+    'Content-Type': 'application/json',
+    'model': 'openai',
+    'subModel': 'text-embedding-3-large',
+    'client-id': 'a3f7b27d767940f8be5f72779912fe03',
+    'client-secret': '2366CCd77d964e82831f5E251678C0Cf',
+    'project': 'HRBuddy',
+    'vector-index': 'spl_hr_buddy_sap'
+}
 
-config = Config()
-embedding_client = EmbeddingClient(
-    provider='azure',
-    api_key=config.config['AZURE_OPENAI_API_KEY'],
-    api_endpoint=config.get('models','AZURE_OPENAI_ENDPOINT'),
-    api_version=config.get('models','AZURE_OPENAI_API_VERSION'),
-    deployment=config.get('models','AZURE_OPENAI_DEPLOYMENT')
-)
-chat_client = ChatClient(
-    provider="azure",
-    api_key=config.config['AZURE_OPENAI_API_KEY'],
-    api_endpoint=config.get('models','AZURE_OPENAI_ENDPOINT'),
-    api_version=config.get('models','AZURE_OPENAI_API_VERSION'),
-    deployment_name=config.get('models','AZURE_OPENAI_CHAT_DEPLOYMENT'),
+# --- Helpers ---
+fernet = Fernet(SAP_DATA_KEY.encode())
+
+def decrypt_value(value: str) -> str:
+    if not value:
+        return ""
+    return fernet.decrypt(value.encode()).decode()
+
+def load_queries_by_file() -> list[tuple[str, list[dict]]]:
+    """Returns a list of (filename_stem, queries) — one entry per input file."""
+    files = []
+    for fname in sorted(os.listdir(QUERIES_FOLDER)):
+        if not fname.endswith(".json"):
+            continue
+        with open(QUERIES_FOLDER / fname, "r", encoding="utf-8") as f:
+            data = json.load(f)
+
+        queries = []
+        if isinstance(data, dict) and "sections" in data:
+            for section in data.get("sections", []):
+                for qa in section.get("qa_pairs", []):
+                    if "question" in qa:
+                        queries.append({
+                            "query": qa["question"],
+                            "question_number": qa.get("question_number"),
+                            "section": section.get("section", ""),
+                            "policy_source": data.get("policy_source", ""),
+                        })
+        elif isinstance(data, list):
+            queries.extend([{"query": q} for q in data])
+        elif isinstance(data, dict) and "query" in data:
+            queries.append({"query": data["query"]})
+
+        if queries:
+            files.append((Path(fname).stem, queries))
+    return files
+
+def fetch_user_data(required_sap_fields: list[str]) -> dict:
+    payload = json.dumps({
+        "query": USERNAME,
+        "searchType": "vector",
+        "vector": {
+            "kind": "vector",
+            "fields": "user_name_vector",
+            "k": 3,
+            "exhaustive": True,
+        },
+        "$select": "user_name, " + ", ".join(required_sap_fields),
+        "top": 1
+    })
+    response = requests.post(SAP_URL, headers=SAP_HEADERS, data=payload)
+    if response.status_code != 200:
+        print(f"SAP search error {response.status_code}: {response.text}")
+        return {}
+
+    result = response.json().get("value", [])
+    if not result:
+        return {}
+
+    raw = result[0]
+    fields_to_decrypt = ["user_name"] + required_sap_fields
+    return {f: decrypt_value(raw.get(f, "")) for f in fields_to_decrypt}
+
+def debug_pipeline(query: str, system_content: str, az_openai_client, start_trace,
+                   az_model: str, employee_data: dict = None):
+    """
+    Runs each step independently and reports which step triggers the PII error.
+    Pass in a hardcoded employee_data dict to test step 4 in isolation.
+    """
+    print("\n=== DEBUG MODE ===")
+
+    # Step 1 — Query + retrieval
+    print("\n[Step 1] run_conversation_core (query + policy retrieval via Azure)...")
+    try:
+        events = list(llm_core.run_conversation_core(
+            messages={"messages": [
+                {"role": "system", "content": system_content},
+                {"role": "user",   "content": query}
+            ]},
+            system_content=system_content,
+            openai_client=az_openai_client,
+            model_name=az_model,
+        ))
+        completion_text, retrieval_list = "", []
+        for event in events:
+            if event[0] == "chunk":
+                completion_text += event[1]
+            elif event[0] == "done":
+                _, _, _, retrieval_list = event[1:]
+        print(f"  ✓ OK — got {len(retrieval_list)} chunks, {len(completion_text)} chars")
+    except Exception as e:
+        print(f"  ✗ FAILED at Step 1: {e}")
+        return
+
+    # Step 2 — Identify SAP fields
+    print("\n[Step 2] identify_required_personalization_fields (policy chunks only)...")
+    try:
+        required_sap_fields = llm_core.identify_required_personalization_fields(
+            az_openai_client=az_openai_client,
+            model_name="gpt-4o",
+            retrieval_list=retrieval_list,
+            start_trace=start_trace,
+        )
+        if isinstance(required_sap_fields, str):
+            required_sap_fields = ast.literal_eval(required_sap_fields)
+        print(f"  ✓ OK — required fields: {required_sap_fields}")
+    except Exception as e:
+        print(f"  ✗ FAILED at Step 2: {e}")
+        return
+
+    # Step 3 — SAP fetch (no LLM call, just API)
+    print("\n[Step 3] fetch_user_data (SAP vector search, no LLM)...")
+    try:
+        if employee_data is None:
+            employee_data = fetch_user_data(required_sap_fields) if required_sap_fields else {}
+        print(f"  ✓ OK — employee fields returned: {list(employee_data.keys())}")
+    except Exception as e:
+        print(f"  ✗ FAILED at Step 3: {e}")
+        return
+
+    # Step 4 — Personalize (sends employee data to LLM)
+    print("\n[Step 4] personalize_response (policy chunks + employee data → LLM)...")
+    try:
+        personalized_text = llm_core.personalize_response(
+            az_openai_client=az_openai_client,
+            model_name="gpt-4o",
+            query=query,
+            retrieval_list=retrieval_list,
+            employee_data=employee_data,
+            start_trace=start_trace,
+        )
+        print(f"  ✓ OK — {len(personalized_text)} chars")
+    except Exception as e:
+        print(f"  ✗ FAILED at Step 4: {e}")
+        print("  → The PII is likely in the decrypted employee_data being sent to the LLM.")
+        print(f"  → Employee data keys sent: {list(employee_data.keys())}")
+        return
+
+    print("\n=== All steps passed ===")
+    return personalized_text
+
+
+def run_pipeline(query: str, system_content: str, azure_config: dict, az_model: str, question_section: str = "") -> tuple:
+    # Create a fresh client per question so abandoned connections from timeouts
+    # don't exhaust the shared connection pool
+    az_openai_client = AzureOpenAI(
+        api_key=azure_config['api_key'],
+        api_version=azure_config['api_version'],
+        azure_endpoint=azure_config['azure_endpoint'],
+        timeout=TIMEOUT_SECONDS,
     )
 
-os.environ["LANGFUSE_PUBLIC_KEY"] = config.get('tracing','LANGFUSE_PUBLIC_KEY')
-os.environ["LANGFUSE_SECRET_KEY"] = config.get('tracing','LANGFUSE_SECRET_KEY')
-os.environ["LANGFUSE_HOST"] = config.get('tracing','LANGFUSE_HOST')
+    # Single trace created here in the worker thread so all child spans
+    # (Answer, Identify_SAP_fields, Personalize_Response) nest under it correctly
+    lf = get_client()
+    with lf.start_as_current_observation(as_type="span", name="QnA") as start_trace:
 
-lf = get_client()
+        # Step 1 — Generate draft + retrieve chunks
+        events = list(llm_core.run_conversation_core(
+            messages={"messages": [
+                {"role": "system", "content": system_content},
+                {"role": "user",   "content": query}
+            ]},
+            system_content=system_content,
+            openai_client=az_openai_client,
+            model_name=az_model,
+            question_section=question_section,
+        ))
 
-client = OpenAI(
-    base_url=config.get('OpenAI', 'URL'),
-    api_key="dummy",  # Required but not used
-    default_headers={
-        'model': 'openai',
-        'subModel': config.get('OpenAI', 'MODEL'),
-        'client-id': config.get('OpenAI', 'client_id'),
-        'client-secret': config.get('OpenAI', 'client_secret'),
-        'api-version': config.get('OpenAI', 'API_VERSION')
+        completion_text = ""
+        retrieval_list  = []
+        for event in events:
+            if event[0] == "chunk":
+                completion_text += event[1]
+            elif event[0] == "done":
+                _, _, _, retrieval_list = event[1:]
 
-    }
-)
-
-JSON_FOLDER = os.path.join(os.path.expanduser("~"), "Downloads", "llm_resending", "output_json")
-TOP_K = 5
-
-def _load_all_chunks() -> list[dict]:
-    """Load all chunks from every JSON file in output_json."""
-    all_chunks = []
-    for fname in os.listdir(JSON_FOLDER):
-        if fname.endswith(".json"):
-            with open(os.path.join(JSON_FOLDER, fname), "r", encoding="utf-8") as f:
-                chunks = json.load(f)
-            all_chunks.extend(chunks)
-    return all_chunks
-
-def DB_search(query: str, question_section: str = "") -> list[dict]:
-    with lf.start_as_current_observation(
-        as_type="retriever",
-        name="DBSearch"
-    ) as DBSearch_span:
-        retrieval_list = []
-        try:
-            all_chunks = _load_all_chunks()
-            q_sec = question_section.strip().lower()
-
-            # If the question has no section, skip retrieval — LLM will say it doesn't know
-            if not q_sec:
-                print("DB_search: question has no section — skipping retrieval")
-                DBSearch_span.update(input=query, output=[])
-                return []
-
-            # Only consider chunks that have a non-empty section header
-            candidates = [c for c in all_chunks if c.get("section", "").strip()]
-
-            # Match: question section appears in chunk section, or vice versa (case-insensitive)
-            matched = [
-                c for c in candidates
-                if q_sec in c.get("section", "").lower()
-                or c.get("section", "").lower() in q_sec
-            ]
-
-            if not matched:
-                print(f"DB_search: no chunk section matched '{question_section}' — skipping retrieval")
-                DBSearch_span.update(input=query, output=[])
-                return []
-
-            # Among matched chunks, pick the one with the highest content keyword score
-            query_terms = query.lower().split()
-            best_chunk = max(
-                matched,
-                key=lambda c: sum(1 for t in query_terms if t in c.get("content", "").lower())
-            )
-
-            source = best_chunk.get("metadata", {}).get("source", "Unknown")
-            retrieval_list.append({
-                "title":        source,
-                "section":      best_chunk.get("section", ""),
-                "link":         best_chunk.get("metadata", {}).get("link", ""),
-                "content":      best_chunk.get("content", ""),
-                "context":      best_chunk.get("context", ""),
-                "date_updated": str(datetime(9999, 1, 1)),
-            })
-            print(f"DB_search: matched chunk → [{source}] {best_chunk.get('section', '')}")
-
-        except Exception as e:
-            print(f"Error found: {e}")
-            return []
-
-        DBSearch_span.update(input=query, output=retrieval_list)
-        return retrieval_list
-
-def query_rewrite(msg_list):
-
-    # start Langfuse tracing of user query rewrite
-    
-    with lf.start_as_current_observation(
-        as_type="generation",
-        name="QueryRewrite",
-        model=config.get('OpenAI', 'QUERY_REWRITE_MODEL')
-    ) as rewrite_span:
-
-        if len(msg_list) <= 1:
-            logger.warning(f"Skipping query rewrite: {msg_list[-1]['content']}")
-            # rewrite_span.end()
-            return
-        
-        _query_list = []
-        for m in msg_list:
-            if m['role'] == 'system':
-                continue
-            elif m['role'] == 'assistant':
-                _query_list.append(f"{m['role']}: {m['content'].split('__References__')[0]}")
-            else:
-                _query_list.append(f"{m['role']}: {m['content']}")
-
-        # Query Rewrite
-        rewrite_msg_list = [
-            {
-                'role': 'system',
-                'content': get_prompt_template('SYS_PROMPT_REWRITE')
-            },
-            {
-                'role': 'user',
-                'content': '\n'.join(_query_list)
-            }
-        ]
-        response = client.chat.completions.create(
-            messages=rewrite_msg_list,
-            model=config.get('OpenAI', 'MODEL'),
-            temperature=0,
-            max_tokens=500
+        # Step 2 — Identify required SAP fields from policy chunks
+        required_sap_fields = llm_core.identify_required_personalization_fields(
+            az_openai_client=az_openai_client,
+            model_name=az_model,
+            retrieval_list=retrieval_list,
+            start_trace=start_trace,
         )
-        new_query_str = response.choices[0].message.content
+        if isinstance(required_sap_fields, str):
+            required_sap_fields = ast.literal_eval(required_sap_fields)
 
-        msg_list[-1]['content'] = new_query_str
-        # trace_metric_list = create_trace_metric_list('QueryRewrite',rewrite_msg_list,new_query_str)
-        # update_span_list(rewrite_span,trace_metric_list)
-        rewrite_span.update(input=rewrite_msg_list, output=new_query_str)
+        # Step 3 — Fetch + decrypt employee data from SAP
+        employee_data = {}
+        if required_sap_fields:
+            employee_data = fetch_user_data(required_sap_fields)
 
-        return 
-
-
-def dcc_prepare_chat_messages(
-        msg_list,
-        system_content,
-        doc_dict = {},
-        retrieval_list_out = None,
-        question_section: str = "",
-    ):
-    '''
-    For chat, retrieve the chunk whose section matches question_section and
-    return the updated messages. If no section match is found, the context
-    will be empty and the LLM is instructed not to hallucinate.
-    '''
-    query_str = msg_list[-1]['content']
-
-    # Retrieve context — matched by section header
-    retrieval_list = DB_search(query_str, question_section=question_section)
-    if retrieval_list_out is not None:
-        retrieval_list_out.extend(retrieval_list)
-  
-    ind = 0
-    for i in retrieval_list:
-        if i["title"] not in doc_dict:
-            ind += 1
-            # alink = '<a href="'+i["link"]+'" target="_blank">'+i["title"]+'</a>'
-            doc_dict[i['title']] = {
-                'text': f'* [{ind}] [{i["title"]}]({i["link"]}) - Last Updated: {datetime.fromisoformat(i["date_updated"]).strftime("%d %b %Y")}',
-                #'text': f'* [{ind}] {alink}',
-                'index': ind
-            }
-
-    # Prepare new context
-    context_str = ''
-    for i in retrieval_list:
-        context_str += get_prompt_template('CONTEXT_TEMPLATE',
-                                            counter=doc_dict[i['title']]['index'],
-                                            title=i['title'],
-                                            content=i['content']
-                                            )
-
-    # If no chunk was matched (empty question section or no section match),
-    # instruct the LLM not to hallucinate
-    if not retrieval_list:
-        context_str = (
-            "[INSTRUCTION: No policy content was found that matches this question. "
-            "Respond with: 'I'm sorry, I don't have enough information to answer this question. "
-            "Please contact HR directly for assistance.' Do not make assumptions or invent details.]"
-        )
-
-    _query_list = []
-    for m in msg_list:
-        if m['role'] == 'system':
-            continue
-        elif m['role'] == 'assistant':
-            _query_list.append(
-                f"{m['role']}: {m['content'].split('__References__')[0]}"
+        # Step 4 — Personalize response
+        if employee_data:
+            personalized_text = llm_core.personalize_response(
+                az_openai_client=az_openai_client,
+                model_name=az_model,
+                query=query,
+                retrieval_list=retrieval_list,
+                employee_data=employee_data,
+                start_trace=start_trace,
             )
         else:
-            _query_list.append(
-                f"{m['role']}: {m['content']}"
-            )
-    new_query_str = get_prompt_template('RAG_PROMPT_TEMPLATE', context_str=context_str, query_str='\n'.join(_query_list))
+            personalized_text = completion_text
 
-    # Update query
-    return (
-        [
-            {"role": "system", "content": system_content},
-            {"role": "user", "content": new_query_str},
-        ]
-    )
+        start_trace.update_trace(
+            input=query,
+            output=personalized_text,
+            user_id='pipeline',
+        )
+
+    return personalized_text, required_sap_fields
 
 
-class PredictiveQuestion(BaseModel):
-    probability: float = Field(description="probability")
-    question: str = Field(description="question")
-
-
-class PredictiveQuestions(BaseModel):
-    questions: List[PredictiveQuestion] = Field(description="list of predictive questions")
-
-
-def get_predictive_question_generator(llm):
-
-    # output_parser = PydanticToolsParser(tools=[PredictiveQuestions])
-
-    prompt = ChatPromptTemplate.from_messages(
-        [
-            ("system", get_prompt_template('SYS_PROMPT_PREDICTIVE')),
-            ("user", "{context}"),
-        ]
-    )
-
-    structured_llm = llm.with_structured_output(PredictiveQuestions)
-
-    predictor = {"context": RunnablePassthrough()} | prompt | structured_llm
-    return predictor
-
-
-DEFAULT_METADATA = {
-    "ls_provider": "azure",
-    "ls_model_name": "gpt-4o",
-    "ls_model_type": "chat",
-}
-
-DEFAULT_MODEL_PARAMETERS = {
-    "maxTokens": 1024,
-    "temperature": 0,
-    "top_p": 1,
-    "frequency_penalty": 0,
-    "presence_penalty": 0,
-}
-
-# Creates score on Langfuse for tracing user feedback
-def trace_score(dcc_config, trace_id, score, comment):
-    os.environ["LANGFUSE_PUBLIC_KEY"] = dcc_config.get('tracing','LANGFUSE_PUBLIC_KEY')
-    os.environ["LANGFUSE_SECRET_KEY"] = dcc_config.get('tracing','LANGFUSE_SECRET_KEY')
-    os.environ["LANGFUSE_HOST"] = dcc_config.get('tracing','LANGFUSE_HOST')
+def main():
+    config = Config()
+    os.environ["LANGFUSE_PUBLIC_KEY"] = config.get('tracing', 'LANGFUSE_PUBLIC_KEY')
+    os.environ["LANGFUSE_SECRET_KEY"] = config.get('tracing', 'LANGFUSE_SECRET_KEY')
+    os.environ["LANGFUSE_HOST"]       = config.get('tracing', 'LANGFUSE_HOST')
 
     lf = get_client()
+    system_content = get_prompt_template('SYS_PROMPT')
 
-    lf.create_score(
-        trace_id=trace_id,
-        name="feedback",
-        value=score,
-        comment=comment,
-    )
-
-    lf.flush()
-
-# Creates a default metric list for tracing
-def create_trace_metric_list(name,input,output):
-    trace_metric_list = {
-        'name': name,
-        'input': input,
-        'output': output,
-        'model': 'gpt-4.1',
-        'metadata': {
-            "provider": "azure",
-            "model_name": "gpt-4.1",
-            "model_type": "chat",
-        },
+    azure_config = {
+        'api_key':        config.config['AZURE_OPENAI_API_KEY'],
+        'api_version':    config.get('models', 'AZURE_OPENAI_API_VERSION'),
+        'azure_endpoint': config.get('models', 'AZURE_OPENAI_ENDPOINT'),
     }
-    return trace_metric_list
+    az_model = config.get('models', 'AZURE_OPENAI_CHAT_DEPLOYMENT')
 
-# LLM call for title generation
-def GenerateTitle(chat_client,prompt,message,conversation_id,request,messages,title_span ):
-    response, token_usage = chat_client.chat([
-                SystemMessage(content=get_prompt_template('SYS_GEN_TITLE_PROMPT')),
-                HumanMessage(content=prompt+message.message)
-            ])
-    title = response.strip().replace('"', '')
-    
-    trace_metric_list = create_trace_metric_list('GenerateTitle',messages,title)
-    update_span_list(title_span,trace_metric_list)
+    files = load_queries_by_file()
+    total_files = len(files)
+    print(f"Loaded {total_files} input file(s)\n")
 
-    title_span.update_trace(
-        name='Title',
-        session_id=f"cnv-{conversation_id}",
-        user_id=request.user.username,
-        input=message.message,
-        output=title
-    )
-    return token_usage, title
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-# Updates span with default args
-def update_span_list(span,trace_metric_list):
-    span.update(
-        input= trace_metric_list['input'],
-        output= trace_metric_list['output'],
-        model = trace_metric_list['model'],
-        metadata = trace_metric_list['metadata'],
-    )
+    for file_idx, (fname_stem, queries) in enumerate(files, 1):
+        print(f"=== File {file_idx}/{total_files}: {fname_stem}.json ({len(queries)} questions) ===\n")
+
+        answered = []
+        out_path = ANSWERED_FOLDER / f"{fname_stem}_{timestamp}.json"
+
+        for item in queries:
+            query = item["query"]
+            print(f"[{item.get('policy_source','')} | {item.get('section','')} | Q{item.get('question_number','')}]")
+            print(f"Q: {query}")
+
+            error_message = ""
+            required_sap_fields = []
+            try:
+                executor = ThreadPoolExecutor(max_workers=1)
+                future = executor.submit(
+                    run_pipeline, query, system_content, azure_config, az_model, item.get("section", "")
+                )
+                try:
+                    personalized_text, required_sap_fields = future.result(timeout=TIMEOUT_SECONDS)
+                finally:
+                    executor.shutdown(wait=False)
+
+                lf.flush()
+
+                print(f"A: {personalized_text}\n{'-'*60}\n")
+                status = "answered"
+
+            except FuturesTimeoutError:
+                print(f"TIMEOUT after {TIMEOUT_SECONDS}s — skipping question.\n{'-'*60}\n")
+                personalized_text = ""
+                status = "timeout"
+                error_message = f"TimeoutError: exceeded {TIMEOUT_SECONDS}s"
+
+            except Exception as e:
+                print(f"ERROR: {e} — skipping question.\n{'-'*60}\n")
+                personalized_text = ""
+                status = "error"
+                error_message = f"{type(e).__name__}: {e}"
+
+            answered.append({
+                "policy_source":   item.get("policy_source", ""),
+                "section":         item.get("section", ""),
+                "question_number": item.get("question_number"),
+                "question":        query,
+                "required_fields": required_sap_fields,
+                "answer":          personalized_text,
+                "status":          status,
+                "error":           error_message,
+            })
+
+            # Save incrementally after every question
+            with open(out_path, "w", encoding="utf-8") as f:
+                json.dump(answered, f, ensure_ascii=False, indent=2)
+            print(f"Saved {len(answered)}/{len(queries)} → {out_path}")
+
+        print(f"\nFile done. {sum(1 for a in answered if a['status'] == 'answered')} answered, "
+              f"{sum(1 for a in answered if a['status'] == 'timeout')} timed out, "
+              f"{sum(1 for a in answered if a['status'] == 'error')} errored.\n")
+
+
+if __name__ == "__main__":
+    main()
