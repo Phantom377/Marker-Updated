@@ -58,9 +58,9 @@ Policy Documents:
 Return only a Python list of the required field names. Example: ["field_a", "field_b"]
 If no fields are needed, return [].
 '''
-
 SAP_DATA_DICTIONARY = '''
 - person_id (VARCHAR) : Unique employee identifier, 8 characters, e.g., '10001234'
+- email_address (VARCHAR) : Corporate email address, e.g., 'XXXXXX@SPGROUP.COM.SG'
 - full_name (VARCHAR) : Employee legal full name, e.g., 'XXX'
 - known_as (VARCHAR) : Employee preferred name, e.g., 'XXX'
 - user_name (VARCHAR) : Active Directory (AD) login ID, e.g., 'XXX'
@@ -73,18 +73,18 @@ SAP_DATA_DICTIONARY = '''
 - employee_group (VARCHAR) : Employment category, valid values: Contract | Permanent | Secondee (Inbound) | Re-employment Contract | Intern | Contingent Worker
 - employee_sub_group (VARCHAR) : Role classification, valid values: Advisor | Exec | VPs & Above | Non-Executive | Intern
 - contract_type (VARCHAR) : Contract duration/type, valid values: Contract-1 yr | Contract-15 mths | Contract-2 yrs | Contract-3 mths | Contract-3 yrs | Contract-4 mths | Contract-4 yrs | Contract-5 mths | Contract-5 yrs | Contract-6 mths | Contract-8 yrs | Contract-9 mths | More than 1 year | Up to 1 year
-- contract_start_date (DATE) : Contract or re-employment start date, format dd/MM/yyyy
-- contract_end_date (DATE) : Contract or re-employment end date, format dd/MM/yyyy
-- employment_time_type (VARCHAR) : Employment time classification, valid values: Full Time | Part Time
+- contract_re_employment_start_date (DATE) : Contract or re-employment start date, format dd/MM/yyyy
+- contract_re_employement_end_date (DATE) : Contract or re-employment end date, format dd/MM/yyyy
+- full_time_part_time (VARCHAR) : Employment time classification, valid values: Full Time | Part Time
 - fte (VARCHAR) : Full-time equivalent reference value, valid values: 0.1 | 0.2 | 0.3 | 0.4 | 0.5 | 0.6 | 0.7 | 0.8 | 0.9 | 1 (Values below 1 are considered part-time for policy reference)
 - work_schedule_code (VARCHAR) : Work schedule identifier, e.g., '5D1'
 - work_schedule (VARCHAR) : Work schedule description, e.g., '5 Day Week (7:30am)'
 - job_grade (VARCHAR) : Job grade code, e.g., 'CA210'
 - hrbp_name (VARCHAR) : HR Business Partner name, e.g., 'Tan Ah Lim'
 - reporting_officer_employee_id (VARCHAR) : Direct manager employee ID, 8 characters, e.g., '10000001'
-- reporting_officer_name (VARCHAR) : Direct manager name, e.g., 'Abdul Azure'
-- skip_level_manager_employee_id (VARCHAR) : Reporting officer’s reporting officer employee ID, e.g., '10000002'
-- skip_level_manager_name (VARCHAR) : Reporting officer’s reporting officer name, e.g., 'Lim Kim'
+- ro_name (VARCHAR) : Direct manager name, e.g., 'Abdul Azure'
+- ros_ro_employee_id (VARCHAR) : Reporting officer’s reporting officer employee ID, e.g., '10000002'
+- ros_ro_name (VARCHAR) : Reporting officer’s reporting officer name, e.g., 'Lim Kim'
 - hod_employee_id (VARCHAR) : Head of Department employee ID, e.g., '20000001'
 - hod_name (VARCHAR) : Head of Department name, e.g., 'Ong Long'
 - hob_employee_id (VARCHAR) : Head of Branch employee ID, e.g., '10000002'
@@ -97,7 +97,6 @@ SAP_DATA_DICTIONARY = '''
 - gender (VARCHAR) : Gender code, valid values: F | M
 - age (INTEGER) : Employee age in years, e.g., 50
 - marital_status (VARCHAR) : Marital status, valid values: Single | Married | Widowed | Divorced | Separated
-- email_address (VARCHAR) : Corporate email address, e.g., 'XXXXXX@SPGROUP.COM.SG'
 - confirmation_effective_date (DATE) : Confirmation date, format dd/MM/yyyy
 - notice_period (VARCHAR) : Notice period duration, valid values: 1 month | 2 months
 - leave_scheme (VARCHAR) : Assigned leave scheme, valid values: 2007 LveSch Exec & Non-exec 2-series | 2007 LveSch Non-exec 3-series | 1979 LveSch Exec & Non-exec 2-series | 1979 LveSch Non-exec 3-series | 1973 LveSch | SDC Non-Exec (14/18) | SDC Exec (17/21) | 12-hour Shift | Not Applicable
@@ -106,7 +105,6 @@ SAP_DATA_DICTIONARY = '''
 - mileage_claim_type_code (VARCHAR) : Mileage claim type code, valid values: 1 | C | M | A
 - mileage_claim_eligibility_label (VARCHAR) : Mileage claim eligibility label, valid values: Tiered Mileage Employees | Car | MotorCycle | All Employee
 '''
-
 PERSONALIZE_SYSTEM_PROMPT = '''
 <Role>
 You are an HR assistant giving a direct, complete answer to an employee's HR query using their actual employment data.
