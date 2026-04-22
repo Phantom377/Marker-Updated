@@ -241,7 +241,7 @@ def run_pipeline(query: str, system_content: str, azure_config: dict, start_trac
     else:
         personalized_text = completion_text
 
-    return personalized_text
+    return personalized_text, required_sap_fields
 
 
 def main():
@@ -278,6 +278,7 @@ def main():
             print(f"Q: {query}")
 
             error_message = ""
+            required_sap_fields = []
             try:
                 with lf.start_as_current_observation(as_type="span", name="QnA") as start_trace:
                     executor = ThreadPoolExecutor(max_workers=1)
@@ -285,7 +286,7 @@ def main():
                         run_pipeline, query, system_content, azure_config, start_trace, az_model
                     )
                     try:
-                        personalized_text = future.result(timeout=TIMEOUT_SECONDS)
+                        personalized_text, required_sap_fields = future.result(timeout=TIMEOUT_SECONDS)
                     finally:
                         executor.shutdown(wait=False)
 
@@ -316,6 +317,7 @@ def main():
                 "section":         item.get("section", ""),
                 "question_number": item.get("question_number"),
                 "question":        query,
+                "required_fields": required_sap_fields,
                 "answer":          personalized_text,
                 "status":          status,
                 "error":           error_message,
@@ -333,4 +335,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
