@@ -1,29 +1,21 @@
-import pandas as pd
-from collections import Counter
+# --- Full detail view for OVER-RETRIEVED and UNDER-RETRIEVED entries ---
+problem_verdicts = {"OVER-RETRIEVED", "UNDER-RETRIEVED", "EMPTY", "ERROR", "PARSE_ERROR"}
 
-# --- Summary statistics ---
-verdict_counts = Counter(r["verdict"] for r in results)
-print("Verdict breakdown:")
-for verdict, count in sorted(verdict_counts.items()):
-    print(f"  {verdict:20s}: {count}")
-print(f"  {'TOTAL':20s}: {len(results)}")
+problems = [r for r in results if r["verdict"] in problem_verdicts]
+print(f"Entries needing attention: {len(problems)}")
 print()
 
-# --- Summary table ---
-df = pd.DataFrame([
-    {
-        "file":           r["_file"],
-        "policy_source":  r["policy_source"],
-        "section":        r["section"],
-        "Q#":             r["question_number"],
-        "question":       r["question"][:80],
-        "fields":         r["fields_retrieved"],
-        "verdict":        r["verdict"],
-        "verdict_reason": r["verdict_reason"],
-    }
-    for r in results
-])
-
-pd.set_option("display.max_colwidth", 100)
-pd.set_option("display.max_rows", None)
-df
+for r in problems:
+    print("=" * 70)
+    print(f"{r['policy_source']} | {r['section']} | Q{r['question_number']}")
+    print(f"Verdict : {r['verdict']}")
+    print(f"Reason  : {r['verdict_reason']}")
+    print(f"Fields  : {r['fields_retrieved']}")
+    print(f"Q: {r['question']}")
+    if r.get("evaluation"):
+        print("Field evaluation:")
+        for field, detail in r["evaluation"].items():
+            needed = "YES" if detail.get("necessary") else " NO"
+            reason = detail.get("reason", "")
+            print(f"  [{needed}] {field}: {reason}")
+    print()
