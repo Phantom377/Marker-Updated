@@ -1,45 +1,19 @@
-import os
+from model_source.dcc_ai_search_json import dcc_prepare_chat_messages
+from model_source.dcc_ai_search_json import GenerateTitle, create_trace_metric_list, update_span_list
 import re
-import logging
-import time
-import json
-from typing import List
-from datetime import datetime
-from dateutil import tz
-
-from pydantic import BaseModel, Field
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.runnables import RunnablePassthrough
-
-from langfuse import Langfuse
+import os
 from langfuse import get_client
-
-from modules.embeddings import EmbeddingClient
-from modules.models import ChatClient
-from modules.database import RetrieverWithScores, VectorStore
-from modules.prompts import get_prompt_template
-from model_source.modules.models import ChatClient, HumanMessage, SystemMessage
 from config import Config
 
-from openai import OpenAI
-
-logger = logging.getLogger(__name__)
+# Fields that identify a person — never sent to the LLM
+PII_FIELDS = {
+    "person_id", "full_name", "known_as", "user_name",
+    "email_address", "ic_type", "reporting_officer_employee_id",
+    "skip_level_manager_employee_id", "hod_employee_id",
+    "hob_employee_id", "hos_employee_id",
+}
 
 config = Config()
-embedding_client = EmbeddingClient(
-    provider='azure',
-    api_key=config.config['AZURE_OPENAI_API_KEY'],
-    api_endpoint=config.get('models','AZURE_OPENAI_ENDPOINT'),
-    api_version=config.get('models','AZURE_OPENAI_API_VERSION'),
-    deployment=config.get('models','AZURE_OPENAI_DEPLOYMENT')
-)
-chat_client = ChatClient(
-    provider="azure",
-    api_key=config.config['AZURE_OPENAI_API_KEY'],
-    api_endpoint=config.get('models','AZURE_OPENAI_ENDPOINT'),
-    api_version=config.get('models','AZURE_OPENAI_API_VERSION'),
-    deployment_name=config.get('models','AZURE_OPENAI_CHAT_DEPLOYMENT'),
-    )
 
 os.environ["LANGFUSE_PUBLIC_KEY"] = config.get('tracing','LANGFUSE_PUBLIC_KEY')
 os.environ["LANGFUSE_SECRET_KEY"] = config.get('tracing','LANGFUSE_SECRET_KEY')
@@ -47,310 +21,320 @@ os.environ["LANGFUSE_HOST"] = config.get('tracing','LANGFUSE_HOST')
 
 lf = get_client()
 
-client = OpenAI(
-    base_url=config.get('OpenAI', 'URL'),
-    api_key="dummy",  # Required but not used
-    default_headers={
-        'model': 'openai',
-        'subModel': config.get('OpenAI', 'MODEL'),
-        'client-id': config.get('OpenAI', 'client_id'),
-        'client-secret': config.get('OpenAI', 'client_secret'),
-        'api-version': config.get('OpenAI', 'API_VERSION')
 
-    }
-)
+DISCLAIMER = "For guidance only. Please refer to official HR policies for confirmation. Policies prevail."
 
-JSON_FOLDER = os.path.join(os.path.expanduser("~"), "hr-chatbot", "src", "preprocessing", "output_json")
-TOP_K = 5
+SAP_SYSTEM_PROMPT = '''
+<Role>
+You are a system that determines which user data fields are strictly required
+to personalize an HR policy response for a specific employee.
+</Role>
 
-def _load_all_chunks() -> list[dict]:
-    """Load all chunks from every JSON file in output_json."""
-    all_chunks = []
-    for fname in os.listdir(JSON_FOLDER):
-        if fname.endswith(".json"):
-            with open(os.path.join(JSON_FOLDER, fname), "r", encoding="utf-8") as f:
-                chunks = json.load(f)
-            all_chunks.extend(chunks)
-    return all_chunks
+<Instructions>
+Step 1 — Understand the policy documents: Identify what HR topic they cover and what employee-specific attributes they use to determine eligibility or entitlements (e.g. job grade, employment type, leave scheme).
 
-def _normalize_section(section: str) -> str:
-    """Strip markdown bold markers, collapse whitespace, and lowercase for comparison."""
-    text = re.sub(r'\*+', '', section)   # remove ** markers
-    text = re.sub(r'\s+', ' ', text)     # collapse double spaces left behind
-    return text.strip().lower()
+Step 2 — Match to fields: For each employee-specific attribute found in the policy documents, find the exact matching field from the Available User Data Fields list below. Match on field semantics, not on surface wording. For example, if the policy distinguishes "executive" or "non-executive" classification, that maps to `employee_sub_group`, not `generic_role`.
 
-def DB_search(query: str, question_section: str = "") -> list[dict]:
-    with lf.start_as_current_observation(
-        as_type="retriever",
-        name="DBSearch"
-    ) as DBSearch_span:
-        retrieval_list = []
-        try:
-            all_chunks = _load_all_chunks()
-            q_sec = _normalize_section(question_section)
+Step 3 — Filter strictly: Only include fields that are DIRECTLY needed to determine what applies to this employee. Do NOT include fields that are:
+  - Merely related to the topic
+  - Nice-to-have context
+  - Not used as a condition or variable in the policy documents
 
-            # If the question has no section, skip retrieval — handled upstream in pipeline
-            if not q_sec:
-                print("DB_search: question has no section — skipping retrieval")
-                DBSearch_span.update(input=query, output=[])
-                return []
+Step 4 — Output: Return ONLY a Python list of field name strings. No explanation, no prose, no markdown.
+  - If no personalization is needed, return []
+  - Example of valid output: ["employee_sub_group", "leave_scheme"]
+</Instructions>
 
-            # Exact match after stripping markdown bold markers and whitespace
-            # Also skips chunks whose section is empty after normalization
-            matched = [
-                c for c in all_chunks
-                if _normalize_section(c.get("section", "")) == q_sec
-            ]
+Available User Data Fields:
+{sap_data_dictionary}
+'''
 
-            if not matched:
-                print(f"DB_search: no chunk exactly matched section '{question_section}'")
-                DBSearch_span.update(input=query, output=[])
-                return []
+SAP_USER_PROMPT = '''
+The following are the retrieved HR policy documents relevant to the employee's query. Identify which user data fields from the available list are strictly required to determine what applies to this specific employee.
 
-            # If multiple chunks share the same section, take the first one
-            best_chunk = matched[0]
-            print(f"DB_search: matched {len(matched)} chunk(s) for section '{question_section}' — using chunk_index {best_chunk.get('chunk_index', '?')}")
+Policy Documents:
+{policy_context}
 
-            source = best_chunk.get("metadata", {}).get("source", "Unknown")
-            retrieval_list.append({
-                "title":        source,
-                "section":      best_chunk.get("section", ""),
-                "link":         best_chunk.get("metadata", {}).get("link", ""),
-                "content":      best_chunk.get("content", ""),
-                "context":      best_chunk.get("context", ""),
-                "date_updated": str(datetime(9999, 1, 1)),
-            })
-            print(f"DB_search: matched chunk → [{source}] {best_chunk.get('section', '')}")
+Return only a Python list of the required field names. Example: ["field_a", "field_b"]
+If no fields are needed, return [].
+'''
 
-        except Exception as e:
-            print(f"Error found: {e}")
-            return []
+SAP_DATA_DICTIONARY = '''
+- person_id (VARCHAR) : Unique employee identifier, 8 characters, e.g., '10001234'
+- email_address (VARCHAR) : Corporate email address, e.g., 'XXXXXX@SPGROUP.COM.SG'
+- full_name (VARCHAR) : Employee legal full name, e.g., 'XXX'
+- known_as (VARCHAR) : Employee preferred name, e.g., 'XXX'
+- user_name (VARCHAR) : Active Directory (AD) login ID, e.g., 'XXX'
+- generic_role (VARCHAR) : Generic job role, e.g., 'Executive Assistant A'
+- company (VARCHAR) : Employing company, e.g., 'Singapore Power Ltd'
+- department (VARCHAR) : Department name, e.g., 'Finance'
+- branch (VARCHAR) : Branch name, e.g., 'Finance Shared Services'
+- section (VARCHAR) : Section name, e.g., 'Group Payroll'
+- unit (VARCHAR) : Unit name within section, nullable
+- employee_group (VARCHAR) : Employment category, valid values: Contract | Permanent | Secondee (Inbound) | Re-employment Contract | Intern | Contingent Worker
+- employee_sub_group (VARCHAR) : Role classification, valid values: Advisor | Exec | VPs & Above | Non-Executive | Intern
+- contract_type (VARCHAR) : Contract duration/type, valid values: Contract-1 yr | Contract-15 mths | Contract-2 yrs | Contract-3 mths | Contract-3 yrs | Contract-4 mths | Contract-4 yrs | Contract-5 mths | Contract-5 yrs | Contract-6 mths | Contract-8 yrs | Contract-9 mths | More than 1 year | Up to 1 year
+- contract_re_employment_start_date (DATE) : Contract or re-employment start date, format dd/MM/yyyy
+- contract_re_employement_end_date (DATE) : Contract or re-employment end date, format dd/MM/yyyy
+- full_time_part_time (VARCHAR) : Employment time classification, valid values: Full Time | Part Time
+- fte (VARCHAR) : Full-time equivalent reference value, valid values: 0.1 | 0.2 | 0.3 | 0.4 | 0.5 | 0.6 | 0.7 | 0.8 | 0.9 | 1 (Values below 1 are considered part-time for policy reference)
+- work_schedule_code (VARCHAR) : Work schedule identifier, e.g., '5D1'
+- work_schedule (VARCHAR) : Work schedule description, e.g., '5 Day Week (7:30am)'
+- job_grade (VARCHAR) : Job grade code, e.g., 'CA210'
+- hrbp_name (VARCHAR) : HR Business Partner name, e.g., 'Tan Ah Lim'
+- reporting_officer_employee_id (VARCHAR) : Direct manager employee ID, 8 characters, e.g., '10000001'
+- ro_name (VARCHAR) : Direct manager name, e.g., 'Abdul Azure'
+- ros_ro_employee_id (VARCHAR) : Reporting officer’s reporting officer employee ID, e.g., '10000002'
+- ros_ro_name (VARCHAR) : Reporting officer’s reporting officer name, e.g., 'Lim Kim'
+- hod_employee_id (VARCHAR) : Head of Department employee ID, e.g., '20000001'
+- hod_name (VARCHAR) : Head of Department name, e.g., 'Ong Long'
+- hob_employee_id (VARCHAR) : Head of Branch employee ID, e.g., '10000002'
+- hob_name (VARCHAR) : Head of Branch name, e.g., 'Lim Kim'
+- hos_employee_id (VARCHAR) : Head of Section employee ID, e.g., '10000001'
+- hos_name (VARCHAR) : Head of Section name, e.g., 'Abdul Azure'
+- ic_type (VARCHAR) : Identification document type, valid values: Singapore Pink NRIC | Singapore Blue NRIC | Passport | Work Permit | Employment Pass | S Pass | Student Pass
+- hire_date (DATE) : Original hire date, format dd/MM/yyyy
+- length_of_service (VARCHAR) : Duration of service, e.g., '41 Years 0 Months 21 Days'
+- gender (VARCHAR) : Gender code, valid values: F | M
+- age (INTEGER) : Employee age in years, e.g., 50
+- marital_status (VARCHAR) : Marital status, valid values: Single | Married | Widowed | Divorced | Separated
+- confirmation_effective_date (DATE) : Confirmation date, format dd/MM/yyyy
+- notice_period (VARCHAR) : Notice period duration, valid values: 1 month | 2 months
+- leave_scheme (VARCHAR) : Assigned leave scheme, valid values: 2007 LveSch Exec & Non-exec 2-series | 2007 LveSch Non-exec 3-series | 1979 LveSch Exec & Non-exec 2-series | 1979 LveSch Non-exec 3-series | 1973 LveSch | SDC Non-Exec (14/18) | SDC Exec (17/21) | 12-hour Shift | Not Applicable
+- medical_scheme (VARCHAR) : Medical benefits scheme, valid values: MSO | SOS | CCS | Not Available
+- ot_eligibility (VARCHAR) : Overtime eligibility indicator, valid values: Yes | No
+- mileage_claim_type_code (VARCHAR) : Mileage claim type code, valid values: 1 | C | M | A
+- mileage_claim_eligibility_label (VARCHAR) : Mileage claim eligibility label, valid values: Tiered Mileage Employees | Car | MotorCycle | All Employee
+'''
 
-        DBSearch_span.update(input=query, output=retrieval_list)
-        return retrieval_list
+PERSONALIZE_SYSTEM_PROMPT = '''
+<Role>
+You are an HR assistant giving a direct, complete answer to an employee's HR query using their actual employment data.
+</Role>
 
-def query_rewrite(msg_list):
+<Instructions>
+- Use the draft response as context for what the policy says, but answer the employee's query directly and completely based on their actual data.
+- State the specific entitlements, eligibility, or rules that apply to THIS employee given their actual employment data.
+- Do not end with follow-up questions, prompts to ask more, or offers to provide further information.
+- Do not mention that you are personalizing a response or that you have access to their employment data.
+- Only use values from the employee data that are directly relevant to answering the query. Do not expose unrelated fields.
+- If the employee data is insufficient to give a definitive answer, state what applies generally based on the draft.
+</Instructions>
+'''
 
-    # start Langfuse tracing of user query rewrite
-    
+PERSONALIZE_USER_PROMPT = '''
+Employee Query:
+"{query}"
+
+Policy Documents:
+{policy_context}
+
+Employee Data:
+{employee_data}
+
+Answer the employee's query directly and completely using their actual data and the policy documents above.
+'''
+
+def run_conversation_core(
+        *,
+        messages,
+        system_content,
+        openai_client,
+        model_name,
+        question_section: str = "",
+        policy_source: str = "",
+    ):
+    """
+    Generator that yields:
+      - ("chunk", text)
+      - ("done", completion_text, trace_metric_list, doc_dict)
+    """
+
+    _client = openai_client
+    _model = model_name
+
+    doc_dict = {}
+    retrieval_list = []
+
+    # Prepare messages for the LLM
+    print("Before entering dcc_prepare_chat_messages", flush=True)
+    messages["messages"] = dcc_prepare_chat_messages(
+        messages["messages"],
+        system_content,
+        doc_dict=doc_dict,
+        retrieval_list_out=retrieval_list,
+        question_section=question_section,
+        policy_source=policy_source,
+    )
+
     with lf.start_as_current_observation(
         as_type="generation",
-        name="QueryRewrite",
-        model=config.get('OpenAI', 'QUERY_REWRITE_MODEL')
-    ) as rewrite_span:
+        name="Answer",
+        model=_model
+    ) as answer_span:
 
-        if len(msg_list) <= 1:
-            logger.warning(f"Skipping query rewrite: {msg_list[-1]['content']}")
-            # rewrite_span.end()
-            return
-        
-        _query_list = []
-        for m in msg_list:
-            if m['role'] == 'system':
-                continue
-            elif m['role'] == 'assistant':
-                _query_list.append(f"{m['role']}: {m['content'].split('__References__')[0]}")
-            else:
-                _query_list.append(f"{m['role']}: {m['content']}")
+        completion_text = ""
 
-        # Query Rewrite
-        rewrite_msg_list = [
-            {
-                'role': 'system',
-                'content': get_prompt_template('SYS_PROMPT_REWRITE')
-            },
-            {
-                'role': 'user',
-                'content': '\n'.join(_query_list)
-            }
-        ]
-        response = client.chat.completions.create(
-            messages=rewrite_msg_list,
-            model=config.get('OpenAI', 'MODEL'),
+        response = _client.chat.completions.create(
+            messages=messages["messages"],
+            model=_model,
             temperature=0,
-            max_tokens=500
-        )
-        new_query_str = response.choices[0].message.content
-
-        msg_list[-1]['content'] = new_query_str
-        # trace_metric_list = create_trace_metric_list('QueryRewrite',rewrite_msg_list,new_query_str)
-        # update_span_list(rewrite_span,trace_metric_list)
-        rewrite_span.update(input=rewrite_msg_list, output=new_query_str)
-
-        return 
-
-
-def dcc_prepare_chat_messages(
-        msg_list,
-        system_content,
-        doc_dict = {},
-        retrieval_list_out = None,
-        question_section: str = "",
-    ):
-    '''
-    For chat, retrieve the chunk whose section matches question_section and
-    return the updated messages. If no section match is found, the context
-    will be empty and the LLM is instructed not to hallucinate.
-    '''
-    query_str = msg_list[-1]['content']
-
-    # Retrieve context — matched by section header
-    retrieval_list = DB_search(query_str, question_section=question_section)
-    if retrieval_list_out is not None:
-        retrieval_list_out.extend(retrieval_list)
-  
-    ind = 0
-    for i in retrieval_list:
-        if i["title"] not in doc_dict:
-            ind += 1
-            # alink = '<a href="'+i["link"]+'" target="_blank">'+i["title"]+'</a>'
-            doc_dict[i['title']] = {
-                'text': f'* [{ind}] [{i["title"]}]({i["link"]}) - Last Updated: {datetime.fromisoformat(i["date_updated"]).strftime("%d %b %Y")}',
-                #'text': f'* [{ind}] {alink}',
-                'index': ind
-            }
-
-    # Prepare new context
-    context_str = ''
-    has_empty_section = False
-    for i in retrieval_list:
-        context_str += get_prompt_template('CONTEXT_TEMPLATE',
-                                            counter=doc_dict[i['title']]['index'],
-                                            title=i['title'],
-                                            content=i['content']
-                                            )
-        if not i.get('section', '').strip():
-            has_empty_section = True
-
-    # If the retrieved chunk has no section header, warn the LLM not to hallucinate
-    if has_empty_section:
-        context_str += (
-            "\n\n[INSTRUCTION: The retrieved content above does not correspond to a specific "
-            "policy section. If it is insufficient to answer the query, respond with: "
-            "'I'm sorry, I don't have enough information to answer this question. "
-            "Please contact HR directly for assistance.' Do not make assumptions or invent details.]"
+            max_tokens=4096,
+            top_p=1,
+            frequency_penalty=0,
+            presence_penalty=0,
+            stream=True,
         )
 
-    _query_list = []
-    for m in msg_list:
-        if m['role'] == 'system':
-            continue
-        elif m['role'] == 'assistant':
-            _query_list.append(
-                f"{m['role']}: {m['content'].split('__References__')[0]}"
-            )
-        else:
-            _query_list.append(
-                f"{m['role']}: {m['content']}"
-            )
-    new_query_str = get_prompt_template('RAG_PROMPT_TEMPLATE', context_str=context_str, query_str='\n'.join(_query_list))
+        for event in response:
+            if not event.choices:
+                continue
 
-    # Update query
+            if event.choices[0].finish_reason is not None:
+                break
+
+            if event.choices[0].delta.content:
+                chunk = event.choices[0].delta.content
+                completion_text += chunk
+                yield ("chunk", chunk)
+
+        trace_metric_list = create_trace_metric_list(
+            "Answer",
+            messages["messages"],
+            completion_text
+        )
+
+        update_span_list(answer_span,trace_metric_list)
+        
+        yield ("done", completion_text, trace_metric_list, doc_dict, retrieval_list)
+        
+        # required_sap_fields = identify_required_personalization_fields(az_openai_client, model_name, completion_text, start_trace)
+        # yield (required_sap_fields)
+        # sap_data = fetch_user_personalization_data(user_id=123, required_fields=required_sap_fields)
+
+def build_reference_appendix(completion_text: str, doc_dict: dict) -> str:
+    if not doc_dict:
+        return ""
+
+    context_numbers = re.findall(r'\[Ref (\d+)', completion_text)
+    sources_used = [
+        v['text']
+        for v in doc_dict.values()
+        if v['index'] in map(int, context_numbers)
+    ]
+
+    if not sources_used:
+        return ""
+
     return (
-        [
-            {"role": "system", "content": system_content},
-            {"role": "user", "content": new_query_str},
-        ]
+        "\n\n__References__ Used:\n"
+        + "\n".join(sources_used)
+        + f"\n\n{DISCLAIMER}"
     )
 
-
-class PredictiveQuestion(BaseModel):
-    probability: float = Field(description="probability")
-    question: str = Field(description="question")
-
-
-class PredictiveQuestions(BaseModel):
-    questions: List[PredictiveQuestion] = Field(description="list of predictive questions")
-
-
-def get_predictive_question_generator(llm):
-
-    # output_parser = PydanticToolsParser(tools=[PredictiveQuestions])
-
-    prompt = ChatPromptTemplate.from_messages(
-        [
-            ("system", get_prompt_template('SYS_PROMPT_PREDICTIVE')),
-            ("user", "{context}"),
-        ]
+def identify_required_personalization_fields(
+    az_openai_client,
+    model_name,
+    retrieval_list: list,
+    start_trace
+) -> list[str]:
+    print("entered identify")
+    identify_SAP_fields_span = start_trace.start_generation(name="Identify_SAP_fields")
+    policy_context = "\n\n".join(
+        f"[{i+1}] {chunk['title']}\n{chunk['content']}"
+        for i, chunk in enumerate(retrieval_list)
     )
-
-    structured_llm = llm.with_structured_output(PredictiveQuestions)
-
-    predictor = {"context": RunnablePassthrough()} | prompt | structured_llm
-    return predictor
-
-
-DEFAULT_METADATA = {
-    "ls_provider": "azure",
-    "ls_model_name": "gpt-4o",
-    "ls_model_type": "chat",
-}
-
-DEFAULT_MODEL_PARAMETERS = {
-    "maxTokens": 1024,
-    "temperature": 0,
-    "top_p": 1,
-    "frequency_penalty": 0,
-    "presence_penalty": 0,
-}
-
-# Creates score on Langfuse for tracing user feedback
-def trace_score(dcc_config, trace_id, score, comment):
-    os.environ["LANGFUSE_PUBLIC_KEY"] = dcc_config.get('tracing','LANGFUSE_PUBLIC_KEY')
-    os.environ["LANGFUSE_SECRET_KEY"] = dcc_config.get('tracing','LANGFUSE_SECRET_KEY')
-    os.environ["LANGFUSE_HOST"] = dcc_config.get('tracing','LANGFUSE_HOST')
-
-    lf = get_client()
-
-    lf.create_score(
-        trace_id=trace_id,
-        name="feedback",
-        value=score,
-        comment=comment,
+    completion_text = ""
+    messages = [{"role": "system", "content": SAP_SYSTEM_PROMPT.format(sap_data_dictionary=SAP_DATA_DICTIONARY)},
+                    {"role": 'user', "content": SAP_USER_PROMPT.format(policy_context=policy_context)}
+                    ]
+    openai_response = az_openai_client.chat.completions.create(
+        model=model_name,
+        messages = messages,
+        max_tokens=4096,
+        temperature=0,
+        top_p=1,
+        frequency_penalty=0,
+        presence_penalty=0,
+        stream=True,
     )
-
-    lf.flush()
-
-# Creates a default metric list for tracing
-def create_trace_metric_list(name,input,output):
-    trace_metric_list = {
-        'name': name,
-        'input': input,
-        'output': output,
-        'model': 'gpt-4.1',
-        'metadata': {
-            "provider": "azure",
-            "model_name": "gpt-4.1",
-            "model_type": "chat",
-        },
-    }
-    return trace_metric_list
-
-# LLM call for title generation
-def GenerateTitle(chat_client,prompt,message,conversation_id,request,messages,title_span ):
-    response, token_usage = chat_client.chat([
-                SystemMessage(content=get_prompt_template('SYS_GEN_TITLE_PROMPT')),
-                HumanMessage(content=prompt+message.message)
-            ])
-    title = response.strip().replace('"', '')
+    #print(messages)
     
-    trace_metric_list = create_trace_metric_list('GenerateTitle',messages,title)
-    update_span_list(title_span,trace_metric_list)
+    for event in openai_response:
+        if not event.choices:
+            continue
 
-    title_span.update_trace(
-        name='Title',
-        session_id=f"cnv-{conversation_id}",
-        user_id=request.user.username,
-        input=message.message,
-        output=title
-    )
-    return token_usage, title
+        if event.choices[0].finish_reason is not None:
+            break
 
-# Updates span with default args
-def update_span_list(span,trace_metric_list):
-    span.update(
-        input= trace_metric_list['input'],
-        output= trace_metric_list['output'],
-        model = trace_metric_list['model'],
-        metadata = trace_metric_list['metadata'],
+        if event.choices[0].delta.content:
+            chunk = event.choices[0].delta.content
+            completion_text += chunk
+    
+    trace_metric_list = create_trace_metric_list(
+        "Answer",
+        policy_context,
+        completion_text
     )
+    print(f"Identify required fields:{completion_text}")
+    update_span_list(identify_SAP_fields_span, trace_metric_list)
+    identify_SAP_fields_span.end()
+    
+    return completion_text
+    
+def fetch_user_personalization_data(
+    user_id: str,
+    required_fields: list[str]
+) -> dict:
+    import pandas as pd
+    testing_dataframe = pd.DataFrame({"job_grade": ""}, )
+    # user_data = 
+    for field in required_fields:
+        pass
+
+def personalize_response(
+    az_openai_client,
+    model_name: str,
+    query: str,
+    retrieval_list: list,
+    employee_data: dict,
+    start_trace,
+) -> str:
+    personalize_span = start_trace.start_generation(name="Personalize_Response")
+    policy_context = "\n\n".join(
+        f"[{i+1}] {chunk['title']}\n{chunk['content']}"
+        for i, chunk in enumerate(retrieval_list)
+    )
+    filtered_data = {k: v for k, v in employee_data.items() if k not in PII_FIELDS and v}
+    employee_data_str = "\n".join(f"- {k}: {v}" for k, v in filtered_data.items())
+    messages = [
+        {"role": "system", "content": PERSONALIZE_SYSTEM_PROMPT},
+        {"role": "user", "content": PERSONALIZE_USER_PROMPT.format(
+            query=query,
+            policy_context=policy_context,
+            employee_data=employee_data_str,
+        )},
+    ]
+    openai_response = az_openai_client.chat.completions.create(
+        model=model_name,
+        messages=messages,
+        max_tokens=4096,
+        temperature=0,
+        top_p=1,
+        frequency_penalty=0,
+        presence_penalty=0,
+        stream=True,
+    )
+    personalized_text = ""
+    for event in openai_response:
+        if not event.choices:
+            continue
+        if event.choices[0].finish_reason is not None:
+            break
+        if event.choices[0].delta.content:
+            personalized_text += event.choices[0].delta.content
+
+    trace_metric_list = create_trace_metric_list("Personalize_Response", query, personalized_text)
+    update_span_list(personalize_span, trace_metric_list)
+    personalize_span.end()
+    return personalized_text
