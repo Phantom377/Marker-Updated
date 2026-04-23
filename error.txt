@@ -1,354 +1,318 @@
-import os
-import re
-import logging
-import time
-import json
-from typing import List
-from datetime import datetime
-from dateutil import tz
-
-from pydantic import BaseModel, Field
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.runnables import RunnablePassthrough
-
-from langfuse import Langfuse
-from langfuse import get_client
-
-from modules.embeddings import EmbeddingClient
-from modules.models import ChatClient
-from modules.database import RetrieverWithScores, VectorStore
-from modules.prompts import get_prompt_template
-from model_source.modules.models import ChatClient, HumanMessage, SystemMessage
-from config import Config
-
-from openai import OpenAI
-
-logger = logging.getLogger(__name__)
-
-config = Config()
-embedding_client = EmbeddingClient(
-    provider='azure',
-    api_key=config.config['AZURE_OPENAI_API_KEY'],
-    api_endpoint=config.get('models','AZURE_OPENAI_ENDPOINT'),
-    api_version=config.get('models','AZURE_OPENAI_API_VERSION'),
-    deployment=config.get('models','AZURE_OPENAI_DEPLOYMENT')
-)
-chat_client = ChatClient(
-    provider="azure",
-    api_key=config.config['AZURE_OPENAI_API_KEY'],
-    api_endpoint=config.get('models','AZURE_OPENAI_ENDPOINT'),
-    api_version=config.get('models','AZURE_OPENAI_API_VERSION'),
-    deployment_name=config.get('models','AZURE_OPENAI_CHAT_DEPLOYMENT'),
-    )
-
-os.environ["LANGFUSE_PUBLIC_KEY"] = config.get('tracing','LANGFUSE_PUBLIC_KEY')
-os.environ["LANGFUSE_SECRET_KEY"] = config.get('tracing','LANGFUSE_SECRET_KEY')
-os.environ["LANGFUSE_HOST"] = config.get('tracing','LANGFUSE_HOST')
-
-lf = get_client()
-
-client = OpenAI(
-    base_url=config.get('OpenAI', 'URL'),
-    api_key="dummy",  # Required but not used
-    default_headers={
-        'model': 'openai',
-        'subModel': config.get('OpenAI', 'MODEL'),
-        'client-id': config.get('OpenAI', 'client_id'),
-        'client-secret': config.get('OpenAI', 'client_secret'),
-        'api-version': config.get('OpenAI', 'API_VERSION')
-
+{
+  "policy_source": "Appointment.json",
+  "generated_at": "2026-04-21T07:38:39Z",
+  "total_sections": 31,
+  "total_questions": 31,
+  "sections": [
+    {
+      "section": "Section 1",
+      "question_count": 1,
+      "qa_pairs": [
+        {
+          "question_number": 1,
+          "question": "What are the current policies regarding re-employment after statutory retirement as outlined in Section A \u2013 Appointment?"
+        }
+      ]
+    },
+    {
+      "section": "**A** **OBJECTIVE**",
+      "question_count": 1,
+      "qa_pairs": [
+        {
+          "question_number": 1,
+          "question": "What qualifications or criteria does SP Group consider when appointing new employees?"
+        }
+      ]
+    },
+    {
+      "section": "**B** **DEFINITION**",
+      "question_count": 1,
+      "qa_pairs": [
+        {
+          "question_number": 1,
+          "question": "What is the difference between recruitment, internal appointment, and promotion as mentioned in the definitions?"
+        }
+      ]
+    },
+    {
+      "section": "**C** **POLICY AND PROCEDURES ON**",
+      "question_count": 1,
+      "qa_pairs": [
+        {
+          "question_number": 1,
+          "question": "What are the different categories of employees mentioned in the policy, and how do they affect my role and benefits?"
+        }
+      ]
+    },
+    {
+      "section": "**1.** **CATEGORIES OF EMPLOYEES**",
+      "question_count": 1,
+      "qa_pairs": [
+        {
+          "question_number": 1,
+          "question": "What are the differences between the Executive and Non-Executive job grades in terms of entry qualifications and job responsibilities?"
+        }
+      ]
+    },
+    {
+      "section": "**2.** **APPOINTMENT**",
+      "question_count": 1,
+      "qa_pairs": [
+        {
+          "question_number": 1,
+          "question": "What is the probation period for new employees, and what happens if I don't meet the required standards during this time?"
+        }
+      ]
+    },
+    {
+      "section": "2.1 **General**",
+      "question_count": 1,
+      "qa_pairs": [
+        {
+          "question_number": 1,
+          "question": "What are the differences in benefits and working hours between permanent full-time, contract, and part-time employees?"
+        }
+      ]
+    },
+    {
+      "section": "2.2 **Qualifications, Skills & Competencies and Experience**",
+      "question_count": 1,
+      "qa_pairs": [
+        {
+          "question_number": 1,
+          "question": "What are the specific qualifications, skills, and experience required for promotion within the company?"
+        }
+      ]
+    },
+    {
+      "section": "2.3 **Employment of Close Relatives**",
+      "question_count": 1,
+      "qa_pairs": [
+        {
+          "question_number": 1,
+          "question": "What happens if I get married to a coworker while working at SP Group, and our roles create a conflict of interest?"
+        }
+      ]
+    },
+    {
+      "section": "2.4 **Age**",
+      "question_count": 1,
+      "qa_pairs": [
+        {
+          "question_number": 1,
+          "question": "What should I do if I don\u2019t have a Birth Certificate or Certificate of Extract from the Registrar of Birth to verify my age?"
+        }
+      ]
+    },
+    {
+      "section": "2.5 **Medical Examination**",
+      "question_count": 1,
+      "qa_pairs": [
+        {
+          "question_number": 1,
+          "question": "If I am allowed to start work urgently before completing the medical examination, what happens if I fail the medical clearance later?"
+        }
+      ]
+    },
+    {
+      "section": "2.6 **Character**",
+      "question_count": 1,
+      "qa_pairs": [
+        {
+          "question_number": 1,
+          "question": "What should I do if I realize I accidentally made an incorrect declaration about my character-related records during the application process?"
+        }
+      ]
+    },
+    {
+      "section": "2.7 **Salary on Appointment**",
+      "question_count": 1,
+      "qa_pairs": [
+        {
+          "question_number": 1,
+          "question": "How is my starting salary determined based on the provisions in Section F of the Employee Handbook?"
+        }
+      ]
+    },
+    {
+      "section": "2.8 **Increment Date**",
+      "question_count": 1,
+      "qa_pairs": [
+        {
+          "question_number": 1,
+          "question": "How can I find the specific provisions under Section F of the Employee Handbook that determine my increment date?"
+        }
+      ]
+    },
+    {
+      "section": "2.9 **Date of Appointment**",
+      "question_count": 1,
+      "qa_pairs": [
+        {
+          "question_number": 1,
+          "question": "If I need to undergo training before starting my full duties, will my official date of appointment be the day I start training or the day I begin my actual job duties?"
+        }
+      ]
+    },
+    {
+      "section": "2.10 **Probation**",
+      "question_count": 1,
+      "qa_pairs": [
+        {
+          "question_number": 1,
+          "question": "How long is the probation period for permanent appointments, and what are the specific provisions under Section C of the Employee Handbook?"
+        }
+      ]
+    },
+    {
+      "section": "2.11 **Reversion**",
+      "question_count": 1,
+      "qa_pairs": [
+        {
+          "question_number": 1,
+          "question": "What happens if there is no suitable vacancy available for reversion after failing to secure confirmation in a new appointment?"
+        }
+      ]
+    },
+    {
+      "section": "**3.** **RECRUITMENT**",
+      "question_count": 1,
+      "qa_pairs": [
+        {
+          "question_number": 1,
+          "question": "What is the process for referring someone through the Employee Referral Scheme?"
+        }
+      ]
+    },
+    {
+      "section": "**3.1** **Policy and Procedures**",
+      "question_count": 1,
+      "qa_pairs": [
+        {
+          "question_number": 1,
+          "question": "Who will meet me on my first day of work to complete the onboarding formalities?"
+        }
+      ]
+    },
+    {
+      "section": "**3.2** **Employee Referral Scheme**",
+      "question_count": 1,
+      "qa_pairs": [
+        {
+          "question_number": 1,
+          "question": "How can I submit a referral for a job opening under the Employee Referral Scheme?"
+        }
+      ]
+    },
+    {
+      "section": "**3.3** **Employee referral quantum and payment**",
+      "question_count": 1,
+      "qa_pairs": [
+        {
+          "question_number": 1,
+          "question": "What happens to the referral bonus if the referred candidate resigns before their confirmation or second work anniversary?"
+        }
+      ]
+    },
+    {
+      "section": "**3.4** **Recommendation Process**",
+      "question_count": 1,
+      "qa_pairs": [
+        {
+          "question_number": 1,
+          "question": "Am I eligible to participate in the Employee Referral Scheme if I refer a friend who is a fresh graduate or on a fixed-term contract of less than 2 years?"
+        }
+      ]
+    },
+    {
+      "section": "**4.** **INTERNAL APPOINTMENT**",
+      "question_count": 1,
+      "qa_pairs": [
+        {
+          "question_number": 1,
+          "question": "What qualifications and criteria do I need to meet to be considered for an internal appointment to a higher job grade?"
+        }
+      ]
+    },
+    {
+      "section": "4.4 **Approving Authority for Internal Appointment**",
+      "question_count": 1,
+      "qa_pairs": [
+        {
+          "question_number": 1,
+          "question": "Who is responsible for approving internal promotions within SP Group and its subsidiaries?"
+        }
+      ]
+    },
+    {
+      "section": "**5.** **PROMOTION**",
+      "question_count": 1,
+      "qa_pairs": [
+        {
+          "question_number": 1,
+          "question": "What are the criteria for being considered for a promotion within SP Group?"
+        }
+      ]
+    },
+    {
+      "section": "**5.1** **Promotion Criteria**",
+      "question_count": 1,
+      "qa_pairs": [
+        {
+          "question_number": 1,
+          "question": "What does it mean to be a confirmed employee, and how does it affect my eligibility for promotion?"
+        }
+      ]
+    },
+    {
+      "section": "5.2 **Promotion Process**",
+      "question_count": 1,
+      "qa_pairs": [
+        {
+          "question_number": 1,
+          "question": "When can I expect my promotion to take effect if I am promoted during the increment cycle?"
+        }
+      ]
+    },
+    {
+      "section": "**6.** **RE-EMPLOYMENT AFTER RETIREMENT**",
+      "question_count": 1,
+      "qa_pairs": [
+        {
+          "question_number": 1,
+          "question": "What happens if my performance rating does not meet the 'satisfactory' Band 4 requirement in the appraisal before retirement?"
+        }
+      ]
+    },
+    {
+      "section": "6.5 **Re-employment planning and consultation**",
+      "question_count": 1,
+      "qa_pairs": [
+        {
+          "question_number": 1,
+          "question": "What happens if an employee approaching retirement does not meet the re-employment eligibility criteria mentioned in the policy?"
+        }
+      ]
+    },
+    {
+      "section": "6.6 **Job arrangements for re-employment**",
+      "question_count": 1,
+      "qa_pairs": [
+        {
+          "question_number": 1,
+          "question": "What are the options available for job arrangements if I am re-employed after retirement?"
+        }
+      ]
+    },
+    {
+      "section": "**7.** **LOCAL SCHOLARSHIPS**",
+      "question_count": 1,
+      "qa_pairs": [
+        {
+          "question_number": 1,
+          "question": "What happens if a scholarship awardee cannot complete the bond period due to unforeseen circumstances?"
+        }
+      ]
     }
-)
-
-JSON_FOLDER = os.path.join(os.path.expanduser("~"), "hr-chatbot", "src", "preprocessing", "output_json")
-TOP_K = 5
-
-def _load_all_chunks() -> list[dict]:
-    """Load all chunks from every JSON file in output_json."""
-    all_chunks = []
-    for fname in os.listdir(JSON_FOLDER):
-        if fname.endswith(".json"):
-            with open(os.path.join(JSON_FOLDER, fname), "r", encoding="utf-8") as f:
-                chunks = json.load(f)
-            all_chunks.extend(chunks)
-    return all_chunks
-
-def _normalize_section(section: str) -> str:
-    """Strip markdown bold markers and collapse whitespace for comparison."""
-    return re.sub(r'\*+', '', section).strip().lower()
-
-def DB_search(query: str, question_section: str = "") -> list[dict]:
-    with lf.start_as_current_observation(
-        as_type="retriever",
-        name="DBSearch"
-    ) as DBSearch_span:
-        retrieval_list = []
-        try:
-            all_chunks = _load_all_chunks()
-            q_sec = _normalize_section(question_section)
-
-            # If the question has no section, skip retrieval — handled upstream in pipeline
-            if not q_sec:
-                print("DB_search: question has no section — skipping retrieval")
-                DBSearch_span.update(input=query, output=[])
-                return []
-
-            # Exact match after stripping markdown bold markers and whitespace
-            # Also skips chunks whose section is empty after normalization
-            matched = [
-                c for c in all_chunks
-                if _normalize_section(c.get("section", "")) == q_sec
-            ]
-
-            if not matched:
-                print(f"DB_search: no chunk exactly matched section '{question_section}'")
-                DBSearch_span.update(input=query, output=[])
-                return []
-
-            # If multiple chunks share the same section, take the first one
-            best_chunk = matched[0]
-            print(f"DB_search: matched {len(matched)} chunk(s) for section '{question_section}' — using chunk_index {best_chunk.get('chunk_index', '?')}")
-
-            source = best_chunk.get("metadata", {}).get("source", "Unknown")
-            retrieval_list.append({
-                "title":        source,
-                "section":      best_chunk.get("section", ""),
-                "link":         best_chunk.get("metadata", {}).get("link", ""),
-                "content":      best_chunk.get("content", ""),
-                "context":      best_chunk.get("context", ""),
-                "date_updated": str(datetime(9999, 1, 1)),
-            })
-            print(f"DB_search: matched chunk → [{source}] {best_chunk.get('section', '')}")
-
-        except Exception as e:
-            print(f"Error found: {e}")
-            return []
-
-        DBSearch_span.update(input=query, output=retrieval_list)
-        return retrieval_list
-
-def query_rewrite(msg_list):
-
-    # start Langfuse tracing of user query rewrite
-    
-    with lf.start_as_current_observation(
-        as_type="generation",
-        name="QueryRewrite",
-        model=config.get('OpenAI', 'QUERY_REWRITE_MODEL')
-    ) as rewrite_span:
-
-        if len(msg_list) <= 1:
-            logger.warning(f"Skipping query rewrite: {msg_list[-1]['content']}")
-            # rewrite_span.end()
-            return
-        
-        _query_list = []
-        for m in msg_list:
-            if m['role'] == 'system':
-                continue
-            elif m['role'] == 'assistant':
-                _query_list.append(f"{m['role']}: {m['content'].split('__References__')[0]}")
-            else:
-                _query_list.append(f"{m['role']}: {m['content']}")
-
-        # Query Rewrite
-        rewrite_msg_list = [
-            {
-                'role': 'system',
-                'content': get_prompt_template('SYS_PROMPT_REWRITE')
-            },
-            {
-                'role': 'user',
-                'content': '\n'.join(_query_list)
-            }
-        ]
-        response = client.chat.completions.create(
-            messages=rewrite_msg_list,
-            model=config.get('OpenAI', 'MODEL'),
-            temperature=0,
-            max_tokens=500
-        )
-        new_query_str = response.choices[0].message.content
-
-        msg_list[-1]['content'] = new_query_str
-        # trace_metric_list = create_trace_metric_list('QueryRewrite',rewrite_msg_list,new_query_str)
-        # update_span_list(rewrite_span,trace_metric_list)
-        rewrite_span.update(input=rewrite_msg_list, output=new_query_str)
-
-        return 
-
-
-def dcc_prepare_chat_messages(
-        msg_list,
-        system_content,
-        doc_dict = {},
-        retrieval_list_out = None,
-        question_section: str = "",
-    ):
-    '''
-    For chat, retrieve the chunk whose section matches question_section and
-    return the updated messages. If no section match is found, the context
-    will be empty and the LLM is instructed not to hallucinate.
-    '''
-    query_str = msg_list[-1]['content']
-
-    # Retrieve context — matched by section header
-    retrieval_list = DB_search(query_str, question_section=question_section)
-    if retrieval_list_out is not None:
-        retrieval_list_out.extend(retrieval_list)
-  
-    ind = 0
-    for i in retrieval_list:
-        if i["title"] not in doc_dict:
-            ind += 1
-            # alink = '<a href="'+i["link"]+'" target="_blank">'+i["title"]+'</a>'
-            doc_dict[i['title']] = {
-                'text': f'* [{ind}] [{i["title"]}]({i["link"]}) - Last Updated: {datetime.fromisoformat(i["date_updated"]).strftime("%d %b %Y")}',
-                #'text': f'* [{ind}] {alink}',
-                'index': ind
-            }
-
-    # Prepare new context
-    context_str = ''
-    has_empty_section = False
-    for i in retrieval_list:
-        context_str += get_prompt_template('CONTEXT_TEMPLATE',
-                                            counter=doc_dict[i['title']]['index'],
-                                            title=i['title'],
-                                            content=i['content']
-                                            )
-        if not i.get('section', '').strip():
-            has_empty_section = True
-
-    # If the retrieved chunk has no section header, warn the LLM not to hallucinate
-    if has_empty_section:
-        context_str += (
-            "\n\n[INSTRUCTION: The retrieved content above does not correspond to a specific "
-            "policy section. If it is insufficient to answer the query, respond with: "
-            "'I'm sorry, I don't have enough information to answer this question. "
-            "Please contact HR directly for assistance.' Do not make assumptions or invent details.]"
-        )
-
-    _query_list = []
-    for m in msg_list:
-        if m['role'] == 'system':
-            continue
-        elif m['role'] == 'assistant':
-            _query_list.append(
-                f"{m['role']}: {m['content'].split('__References__')[0]}"
-            )
-        else:
-            _query_list.append(
-                f"{m['role']}: {m['content']}"
-            )
-    new_query_str = get_prompt_template('RAG_PROMPT_TEMPLATE', context_str=context_str, query_str='\n'.join(_query_list))
-
-    # Update query
-    return (
-        [
-            {"role": "system", "content": system_content},
-            {"role": "user", "content": new_query_str},
-        ]
-    )
-
-
-class PredictiveQuestion(BaseModel):
-    probability: float = Field(description="probability")
-    question: str = Field(description="question")
-
-
-class PredictiveQuestions(BaseModel):
-    questions: List[PredictiveQuestion] = Field(description="list of predictive questions")
-
-
-def get_predictive_question_generator(llm):
-
-    # output_parser = PydanticToolsParser(tools=[PredictiveQuestions])
-
-    prompt = ChatPromptTemplate.from_messages(
-        [
-            ("system", get_prompt_template('SYS_PROMPT_PREDICTIVE')),
-            ("user", "{context}"),
-        ]
-    )
-
-    structured_llm = llm.with_structured_output(PredictiveQuestions)
-
-    predictor = {"context": RunnablePassthrough()} | prompt | structured_llm
-    return predictor
-
-
-DEFAULT_METADATA = {
-    "ls_provider": "azure",
-    "ls_model_name": "gpt-4o",
-    "ls_model_type": "chat",
+  ]
 }
-
-DEFAULT_MODEL_PARAMETERS = {
-    "maxTokens": 1024,
-    "temperature": 0,
-    "top_p": 1,
-    "frequency_penalty": 0,
-    "presence_penalty": 0,
-}
-
-# Creates score on Langfuse for tracing user feedback
-def trace_score(dcc_config, trace_id, score, comment):
-    os.environ["LANGFUSE_PUBLIC_KEY"] = dcc_config.get('tracing','LANGFUSE_PUBLIC_KEY')
-    os.environ["LANGFUSE_SECRET_KEY"] = dcc_config.get('tracing','LANGFUSE_SECRET_KEY')
-    os.environ["LANGFUSE_HOST"] = dcc_config.get('tracing','LANGFUSE_HOST')
-
-    lf = get_client()
-
-    lf.create_score(
-        trace_id=trace_id,
-        name="feedback",
-        value=score,
-        comment=comment,
-    )
-
-    lf.flush()
-
-# Creates a default metric list for tracing
-def create_trace_metric_list(name,input,output):
-    trace_metric_list = {
-        'name': name,
-        'input': input,
-        'output': output,
-        'model': 'gpt-4.1',
-        'metadata': {
-            "provider": "azure",
-            "model_name": "gpt-4.1",
-            "model_type": "chat",
-        },
-    }
-    return trace_metric_list
-
-# LLM call for title generation
-def GenerateTitle(chat_client,prompt,message,conversation_id,request,messages,title_span ):
-    response, token_usage = chat_client.chat([
-                SystemMessage(content=get_prompt_template('SYS_GEN_TITLE_PROMPT')),
-                HumanMessage(content=prompt+message.message)
-            ])
-    title = response.strip().replace('"', '')
-    
-    trace_metric_list = create_trace_metric_list('GenerateTitle',messages,title)
-    update_span_list(title_span,trace_metric_list)
-
-    title_span.update_trace(
-        name='Title',
-        session_id=f"cnv-{conversation_id}",
-        user_id=request.user.username,
-        input=message.message,
-        output=title
-    )
-    return token_usage, title
-
-# Updates span with default args
-def update_span_list(span,trace_metric_list):
-    span.update(
-        input= trace_metric_list['input'],
-        output= trace_metric_list['output'],
-        model = trace_metric_list['model'],
-        metadata = trace_metric_list['metadata'],
-    )
