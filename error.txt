@@ -1,312 +1,356 @@
-[
-  {
-    "chunk_index": 0,
-    "section": "",
-    "content": "Employee\nHandbook:\n**SECTION A – APPOINTMENT**  \nApplies to: All Employees of SP Group  \nApproved by: Chief Human Resource Officer  \n|Version|Revision<br>Date|Effective<br>Date|Area of Change|\n|---|---|---|---|\n|1.0|Oct 95|Oct 95|- <br>|\n|2.0|Feb 21|Feb 21|• Employee Referral Programme<br>|\n|3.0|Aug 23|Aug 23|• Terms of Appointment<br>• Employee Referral Programme<br>• Local Scholarships<br>|\n|4.0|Jul 25|Jul 25|• Appointment<br>• Approval authorities for<br>Recruitment<br>• Re-employment upon Statutory<br>Retirement|",
-    "metadata": {
-      "source": "Appointment.pdf",
-      "link": "Appointment%2Epdf"
-    },
-    "context": "This chunk provides an overview of the revision history and scope of **SECTION A – APPOINTMENT** in the SP Group Employee Handbook, detailing updates to policies on appointment, recruitment, employee referral programs, local scholarships, and re-employment upon statutory retirement."
-  },
-  {
-    "chunk_index": 1,
-    "section": "**A** **OBJECTIVE**",
-    "content": "# **A** **OBJECTIVE**  \nThis section defines the policy and procedures on appointment to ensure that\nSP Group are staffed with suitably qualified and motivated Employees.",
-    "metadata": {
-      "source": "Appointment.pdf",
-      "link": "Appointment%2Epdf"
-    },
-    "context": "Defines the overarching goal of the \"Appointment\" section, detailing policies and procedures to ensure SP Group recruits and retains qualified, motivated employees across various job grades and employment categories."
-  },
-  {
-    "chunk_index": 2,
-    "section": "**B** **DEFINITION**",
-    "content": "# **B** **DEFINITION**  \n\"Appointment\" means an Employee is appointed to a particular job grade in a\nscheme of service. An appointment may be the result of:  \na) Recruitment;\nb) Internal appointment;\nc) Promotion;\nd) Re-employment upon statutory retirement; or\ne) Serving of bond as stipulated under SP Group’s scholarship agreement.  \n\"Recruitment\" refers to appointment of an external candidate to a job grade\n(normally basic job grade).  \n“Internal Appointment” refers to the appointment of an Employee to a higher job\ngrade.  \n\"Promotion\" means advancement of an Employee to a higher job grade.  \n“Re-employment” refers to the re-contracting of an Employee who have reached\nthe statutory retirement age to allow him to continue working if he meets the\neligibility criteria.  \n\"Scheme of Service\" defines a set of conditions of service for a particular job\ngrade or for a series of job grades. It provides guidelines for non-executive\nEmployee to advance from one job grade to another.  \nCommon terms which are also referred to in other chapters are defined under\nthe main chapter titled “Definition”.",
-    "metadata": {
-      "source": "Appointment.pdf",
-      "link": "Appointment%2Epdf"
-    },
-    "context": "This chunk provides definitions of key terms related to employee appointment processes, including recruitment, internal appointment, promotion, re-employment, and service obligations under SP Group’s scholarship agreements, as outlined in the Employee Handbook's Section A on Appointment."
-  },
-  {
-    "chunk_index": 3,
-    "section": "**C** **POLICY AND PROCEDURES ON**",
-    "content": "# **C** **POLICY AND PROCEDURES ON**  \n1. Categories of Employees\n2. Appointment\n3. Recruitment\n4. Internal Appointment\n5. Promotion\n6. Re-employment upon Statutory Retirement\n7. Local Scholarships",
-    "metadata": {
-      "source": "Appointment.pdf",
-      "link": "Appointment%2Epdf"
-    },
-    "context": "This chunk outlines the key policy areas and procedural frameworks governing employee management within SP Group, including employee categorization, appointment processes, recruitment, internal promotions, re-employment after retirement, and scholarship programs, as detailed in the Employee Handbook."
-  },
-  {
-    "chunk_index": 4,
-    "section": "**1.** **CATEGORIES OF EMPLOYEES**",
-    "content": "# **1.** **CATEGORIES OF EMPLOYEES**  \n1.1 Employees are emplaced on the following job grades:  \na) Executive Job Grade\nThe entry level generally requires tertiary educational attainment or\nrecognised professional qualifications; the work of these Employees\ncovers a wide range of engineering, finance, administrative and other\nprofessional duties.  \nb) Non-Executive Job Grade\nEmployees in job grades of “2” series - Entry generally requires\ndiploma educational attainment. These Employees hold a range of\ntechnical or technical/clerical supervisory posts.  \nEmployees in job grades of “3” series - Entry generally requires a\ngood NITEC educational attainment or equivalent; the range of work\nincludes clerical/technical duties of a routine nature.  \n1.2 Service is also divided according to the nature of work done (for example,\nclerical or technical). This distinction determines the service conditions\nand their promotion prospects.",
-    "metadata": {
-      "source": "Appointment.pdf",
-      "link": "Appointment%2Epdf"
-    },
-    "context": "This chunk outlines the classification of employees within SP Group, detailing job grades, entry-level qualifications, and distinctions based on the nature of work, which influence service conditions and promotion prospects. It is part of the broader \"Appointment\" section that defines policies and procedures for staffing and career progression."
-  },
-  {
-    "chunk_index": 5,
-    "section": "**2.** **APPOINTMENT**",
-    "content": "# **2.** **APPOINTMENT**  \n2.1   General\n2.2   Qualifications, Skills & Competencies and Experience\n2.3   Employment of Close Relatives\n2.4   Age\n2.5   Medical Examination  \n2.6   Character  \n2.7   Selection Committee\n2.8   Approving Authority for Appointment/Promotion\n2.9   Salary on Appointment/Promotion\n2.10 Incremental Date\n2.11 Date of Appointment\n2.12 Probation  \n2.13 Reversion",
-    "metadata": {
-      "source": "Appointment.pdf",
-      "link": "Appointment%2Epdf"
-    },
-    "context": "This chunk outlines the general policies, qualifications, and procedural requirements for appointing employees to various roles within SP Group, including recruitment, internal appointments, promotions, re-employment, and probation, as part of the broader Employee Handbook's guidelines on staffing and workforce management."
-  },
-  {
-    "chunk_index": 6,
-    "section": "2.1 **General**",
-    "content": "# 2.1 **General**  \n2.1.1 Appointments may be made through:  \na) recruitment;\nb) internal appointment;\nc) promotion;\nd) re-employment; or\ne) service obligation as stipulated under SP Group’s scholarship  \nagreement.  \n2.1.2 Appointments would normally be at basic grades except for wellqualified and experienced candidates whose expertise is needed.  \n2.1.3 Appointment will be based on qualifications, skills & competencies,\nexperience and/or capability. There should be no prejudice against\ncandidates of a particular race, religion, marital status, age or gender,\nunless it is an inherent job requirement.  \n2.1.4 Terms of appointment may be:  \na) Permanent Full-time\nThis forms the bulk of Employees. They are hired to work between\n42-44 hours per week depending on their workweek scheme, and\nshall enjoy all Employee benefits provided by the relevant SP\nGroup Company.  \nb) Contract\nEmployees are employed under contract of service for a specified\nperiod. The terms and conditions of each contract are negotiated\nbetween the relevant SP Group Company and the Employee.  \nc) Part-time\nThese Employees work less than 35 hours per week.  \nPermanent Employees who have been given approval to work on\na part-time basis, are eligible for benefits on a pro-rated basis.  \n2.1.5 Employees are required to discharge the usual duties of the job grades\nto which they are appointed and any other suitable duties that they may\nbe called upon to perform.",
-    "metadata": {
-      "source": "Appointment.pdf",
-      "link": "Appointment%2Epdf"
-    },
-    "context": "This chunk outlines the general principles and terms of appointment for employees within SP Group, including the types of appointments (e.g., recruitment, promotion, re-employment), criteria for selection, and employment categories (permanent full-time, contract, part-time), as well as the expectations for employees to perform duties associated with their job grades. It is part of the broader \"Appointment\" section detailing policies and procedures for staffing and employment."
-  },
-  {
-    "chunk_index": 7,
-    "section": "2.2 **Qualifications, Skills & Competencies and Experience**",
-    "content": "# 2.2 **Qualifications, Skills & Competencies and Experience**  \nCandidates will have to meet the minimum qualifications, experience,\nskills and/or competencies of the post before being considered for appointment/promotion.",
-    "metadata": {
-      "source": "Appointment.pdf",
-      "link": "Appointment%2Epdf"
-    },
-    "context": "This chunk outlines the criteria for evaluating candidates' qualifications, experience, skills, and competencies as prerequisites for appointment or promotion within SP Group, situated within the broader policies and procedures on employee appointment."
-  },
-  {
-    "chunk_index": 8,
-    "section": "2.3 **Employment of Close Relatives**",
-    "content": "# 2.3 **Employment of Close Relatives**  \n2.3.1 Close relatives are not to be appointed to jobs which may give rise to potential conflict of interest or a situation where one may have\nimmediate authority over the other.  \n2.3.2 Where two Employees marry or job circumstances change which give rise to situations as in Para 2.3.1, then redeployment or transfer may have to be arranged. This can be done through consulting Head HR or Head of Department (for Employees of SP) or Head of Subsidiary (for Employees of SP Subsidiaries).\n(Note: ‘Close relatives’ are defined as spouse, parents, children, siblings, including in-laws)",
-    "metadata": {
-      "source": "Appointment.pdf",
-      "link": "Appointment%2Epdf"
-    },
-    "context": "This chunk outlines the policy on the employment of close relatives within SP Group, addressing potential conflicts of interest, redeployment, and transfer procedures to ensure compliance with organizational guidelines on workplace relationships."
-  },
-  {
-    "chunk_index": 9,
-    "section": "2.4 **Age**",
-    "content": "# 2.4 **Age**  \nEvidence of age of an Employee should always be a Birth Certificate/Certificate of Extract from the Registrar of Birth. In the\nabsence of such evidence, the Identity Card/Passport will be accepted.\nWhere the exact date of birth is not known, it shall be deemed to be 31\nDecember of the year of birth.",
-    "metadata": {
-      "source": "Appointment.pdf",
-      "link": "Appointment%2Epdf"
-    },
-    "context": "The chunk outlines the policy for verifying an employee's age during the appointment process, specifying acceptable documents and handling cases where the exact date of birth is unknown. It is part of the broader guidelines on employee qualifications and eligibility criteria for appointment within SP Group."
-  },
-  {
-    "chunk_index": 10,
-    "section": "2.5 **Medical Examination**",
-    "content": "# 2.5 **Medical Examination**  \n2.5.1 A person recruited must be certified by SP Group’s appointed medical  \nofficer or a medical officer as medically and physically fit before he can\nassume duty.  \nHead HR or Head of Department (for Employees of SP) or Head of\nSubsidiary (for Employees of SP Subsidiaries) may, at their discretion,\nallow the candidates to assume duties prior to medical clearance if their\nservices are needed urgently.  \nThe Letter of Appointment should have a qualifying clause indicating\nthat the appointment is still subject to medical clearance.  \n2.5.2 Persons who are colour-blind should not be appointed to posts which\nrequire the ability to differentiate between colours, for example,\nTechnicians working at control panels with colour indicators, etc.  \n2.5.3 A medical examination is not required for serving Employees who are  \npromoted.  \n2.5.4 However, a medical examination is required for Employees who are re\nemployed after retirement.",
-    "metadata": {
-      "source": "Appointment.pdf",
-      "link": "Appointment%2Epdf"
-    },
-    "context": "This chunk outlines the medical examination requirements for SP Group employees, detailing the necessity of medical fitness certification for new recruits, exceptions for urgent appointments, restrictions for color-blind individuals in specific roles, and conditions for serving employees and those re-employed after retirement. It is part of the broader appointment policy in the Employee Handbook."
-  },
-  {
-    "chunk_index": 11,
-    "section": "2.6 **Character**",
-    "content": "# 2.6 **Character**  \nCandidate is required to declare a list of statements at point of\napplication. The declaration statements include criminal offence record,\ndrug rehabilitation centre record, etc. Should it be subsequently\nrevealed that he made a false declaration, he shall be liable to dismissal.",
-    "metadata": {
-      "source": "Appointment.pdf",
-      "link": "Appointment%2Epdf"
-    },
-    "context": "The chunk outlines the requirement for candidates to declare their character-related records during the application process, emphasizing the consequences of false declarations, as part of the broader appointment policies and procedures detailed in Section A of the SP Group Employee Handbook."
-  },
-  {
-    "chunk_index": 12,
-    "section": "2.7 **Salary on Appointment**",
-    "content": "# 2.7 **Salary on Appointment**  \nThe salary to be granted on appointment will be in accordance with the provisions under Section F of the Employee Handbook.",
-    "metadata": {
-      "source": "Appointment.pdf",
-      "link": "Appointment%2Epdf"
-    },
-    "context": "Salary determination upon appointment is outlined under Section F of the Employee Handbook, which governs compensation policies for new hires, internal appointments, promotions, and re-employment within SP Group."
-  },
-  {
-    "chunk_index": 13,
-    "section": "2.8 **Increment Date**",
-    "content": "# 2.8 **Increment Date**  \nThe increment date of an Employee will be in accordance with the provisions under Section F of the Employee Handbook.",
-    "metadata": {
-      "source": "Appointment.pdf",
-      "link": "Appointment%2Epdf"
-    },
-    "context": "Increment Date refers to the specific date when an Employee's salary increment is applied, as outlined in Section F of the Employee Handbook, within the broader policies and procedures governing appointment, promotion, and employment terms at SP Group."
-  },
-  {
-    "chunk_index": 14,
-    "section": "2.9 **Date of Appointment**",
-    "content": "# 2.9 **Date of Appointment**  \nThe date of appointment of a new Employee into the service is the date\nthat he joins service. The date of appointment of an Employee who has\nto undergo training before being emplaced on the proper scale will be\nthe date that he assumes duties of the post.",
-    "metadata": {
-      "source": "Appointment.pdf",
-      "link": "Appointment%2Epdf"
-    },
-    "context": "This chunk defines the policy on determining the official date of appointment for new employees, including those requiring training before assuming full duties, as part of the broader guidelines on employee appointment and recruitment within SP Group."
-  },
-  {
-    "chunk_index": 15,
-    "section": "2.10 **Probation**",
-    "content": "# 2.10 **Probation**  \nAll appointments to the permanent service will normally be subject to a\nperiod of probation in accordance with the provisions under Section C\nof the Employee Handbook.",
-    "metadata": {
-      "source": "Appointment.pdf",
-      "link": "Appointment%2Epdf"
-    },
-    "context": "The chunk outlines the probation policy for permanent appointments within SP Group, as part of the broader guidelines on employee appointment processes detailed in Section A of the Employee Handbook."
-  },
-  {
-    "chunk_index": 16,
-    "section": "2.11 **Reversion**",
-    "content": "# 2.11 **Reversion**  \nA serving Employee who is unable to secure confirmation in his new\nappointment may be reverted to his previous appointment or to an\nappointment in a similar job grade provided there is a suitable vacancy\navailable.",
-    "metadata": {
-      "source": "Appointment.pdf",
-      "link": "Appointment%2Epdf"
-    },
-    "context": "The chunk outlines the policy on reversion, detailing the process for a serving employee who fails to secure confirmation in a new appointment, allowing them to return to their previous role or a similar job grade if a suitable vacancy exists. It is part of the broader \"Appointment\" section, which defines policies and procedures for staffing, including recruitment, internal appointments, promotions, and re-employment."
-  },
-  {
-    "chunk_index": 17,
-    "section": "**3.** **RECRUITMENT**",
-    "content": "# **3.** **RECRUITMENT**",
-    "metadata": {
-      "source": "Appointment.pdf",
-      "link": "Appointment%2Epdf"
-    },
-    "context": "The \"Recruitment\" section outlines the policies, procedures, and approval authorities for hiring new employees, including factors to consider before filling vacancies, the interview process, and the Employee Referral Scheme, within the broader framework of SP Group's appointment and employment practices."
-  },
-  {
-    "chunk_index": 18,
-    "section": "**3.1** **Policy and Procedures**",
-    "content": "# **3.1** **Policy and Procedures**  \n3.1.1 The following factors are to be considered before filling any vacancies:  \na) any anticipated changes in manpower requirements due to change\ndrivers like reorganization, streamlining of work procedures, etc.  \nb) provide career development opportunities to the Employee as part\nof job rotation or to be appointed at higher job grade.  \nThe authority to approve hiring requests for new headcount resides with\nGCEO, while HOD is authorized to approve requests pertaining to\nreplacement and contract (non-SP headcount) positions. Replacement of\nnew hires who resign within 3 months of joining shall not require separate\napproval, in view of their short tenure.  \n3.1.2 Vacancies are normally advertised in the various recruitment platforms.  \n3.1.3 All applications must reach SP Group by the closing date.  \n3.1.4 All applications will be screened and shortlisted in accordance with the\nqualifications, experience, skillsets and/or competencies stipulated.  \n3.1.5 The following interview process will apply:  \na) Basic screening to be conducted by SP HR  \nb) Interview by Hiring Manager (typically the Reporting Officer (RO)) and\nSP HR (RO may request if more parties need to be involved in the\ninterview)  \n3.1.6 The approving authorities for offer approvals are as follows:  \n|Level|Permanent /<br>Contract SP Staff|Col3|Col4|Contract for Service /<br>Agency Contractor|Col6|Col7|\n|---|---|---|---|---|---|---|\n|Dy Director &<br>above|HOD|Head<br>HR|GCEO|HOD|Head<br>HR|GCEO|\n|Asst Director<br>& below|HOD|Head<br>HR|-|HOD|Head<br>HR|-|\n|Fresh<br>Grad<br>(Non-ICT)|HOD|HR VP|-|HOD|HR VP|-|\n|Non-executive|HOD|Head<br>HR|-|HOB|HR VP|-|  \nFor one-off SP contract or renewal cases of 6 months or less, the approving\nauthorities set out in the table in Para 3.1.6 apply.  \nFor any duration more than 6 months, the SP contract extension approval\nto be treated as new hiring requests and hiring approval is per Para 3.1.1.  \n3.1.7 Letters of Appointment should spell out the appointment and the terms and  \nconditions of the appointment. The appointee is required to return the\noriginal Letter of Appointment to SP HR within five working days.  \n3.1.8 New Employees will be met and greeted by line administrator or Reporting\nOfficer (RO) or SP HR and complete onboarding formalities before\nproceeding to the employing department/company on the first day of work.",
-    "metadata": {
-      "source": "Appointment.pdf",
-      "link": "Appointment%2Epdf"
-    },
-    "context": "This chunk outlines the policy and procedures for recruitment within SP Group, detailing factors to consider before filling vacancies, the approval process for hiring requests, screening and interview procedures, offer approvals, and onboarding formalities, as part of the broader appointment framework in the Employee Handbook."
-  },
-  {
-    "chunk_index": 19,
-    "section": "**3.2** **Employee Referral Scheme**",
-    "content": "# **3.2** **Employee Referral Scheme**  \n3.2.1 Under the Employee Referral Scheme, Employees are encouraged to recommend their networks for job openings in SP Group.",
-    "metadata": {
-      "source": "Appointment.pdf",
-      "link": "Appointment%2Epdf"
-    },
-    "context": "The chunk outlines the Employee Referral Scheme, a recruitment initiative within SP Group's appointment and recruitment policies, encouraging employees to recommend candidates for job openings."
-  },
-  {
-    "chunk_index": 20,
-    "section": "**3.3** **Employee referral quantum and payment**",
-    "content": "# **3.3** **Employee referral quantum and payment**  \n3.3.1 The Employee referral quantum will be paid according to the level of hired\nunder the Referral Bonus Plan:  \n|Category|Job Title|Quantum|\n|---|---|---|\n|Executive|Deputy Director to Director|$2,000|\n|Executive|Senior Principal Engineer to Master Principal<br>Engineer|$2,000|\n|Executive|Senior Manager to Assistant Director|$1,500|\n|Executive|Principal Engineer|$1,500|\n|Executive|Executive Officer to Manager|$1,000|\n|Executive|Engineer to Senior Engineer|$1,000|\n|Executive|Senior Technical Officer to Senior Principal<br>Technical Officer|$1,000|\n|Non-<br>executive|All levels|$1,000|  \n3.3.2 Employee will receive Search Bonus Plan for job openings that have proven to be challenging in sourcing (e.g., assigned to search firms by HR or long outstanding) on top of the Referral Bonus Plan as outlined in Para 3.3.1. The quantum is 3 times of the Referral Bonus Plan.  \n3.3.3 Employee will receive the referral quantum under the Referral Bonus Plan\nwhen the recommended candidate is successfully appointed and\nsubsequently confirmed in the appointment.  \n3.3.4 For recommended candidate who is sourced via the Search Bonus Plan,\nEmployee will receive the additional referral payment on the 2 [nd] work\nanniversary year from the recommended candidate’s hired date.  \n3.3.5 The payment of Employee referral quantum will be paid via the Employee’s\npayroll at respective tranches as outlined in Para 3.3.3 and Para 3.3.4,\nwhere applicable.  \n3.3.6 Employee will not be eligible for the referral quantum if either party (i.e.,\nEmployee or recommended candidate) has resigned or is under a notice of\ntermination or is no longer in active service before the payment date.",
-    "metadata": {
-      "source": "Appointment.pdf",
-      "link": "Appointment%2Epdf"
-    },
-    "context": "This chunk outlines the payment structure and conditions for the Employee Referral Scheme within SP Group's recruitment policy, detailing referral bonus amounts, eligibility criteria, and payment timelines for successful candidate referrals."
-  },
-  {
-    "chunk_index": 21,
-    "section": "**3.4** **Recommendation Process**",
-    "content": "# **3.4** **Recommendation Process**  \n3.4.1 Job vacancies are announced on the Spectrum and Employees will be able\nto access the Job Search portal for the job description.\nAn Employee may email his friend’s resume to HR recruitment mailbox to\nrefer a friend.  \nAlternatively, the Employee may also advise his friend to apply directly for\nthe position and indicate the source as “Employee Referral” and state the\nEmployee’s full name in the application form.  \n3.4.2 All permanent and contract Employees are eligible to participate in this\nscheme, except for the following:  \na) VPs and above\nb) Employees in SP HR\nc) Employees involved in the recruitment process such as:\n- Those recruiting for a specific vacancy   reporting to themselves or their subordinates\n- Those who are in the selection committee\n- Those who make the final hiring decision\nd) Employees who introduce former Employees of SP Group\ne) Employees who recommend fresh graduates, interns, trainees or students from attachment programmes\nf) Employees who refer their family members (i.e., parents, parents-in-law, spouse, children, siblings, grandparents)\ng) Employees who refer candidates who are successfully employed on fixed-term contract of less than 2 years\nh) Union Exco officials  \nThese Employees could still make their recommendations, but they will not\nbe eligible to receive the Employee referral quantum.",
-    "metadata": {
-      "source": "Appointment.pdf",
-      "link": "Appointment%2Epdf"
-    },
-    "context": "The chunk outlines the recommendation process and eligibility criteria for SP Group's Employee Referral Scheme, situated within the broader recruitment policies and procedures detailed in Section A of the Employee Handbook."
-  },
-  {
-    "chunk_index": 22,
-    "section": "**4.** **INTERNAL APPOINTMENT**",
-    "content": "# **4.** **INTERNAL APPOINTMENT**  \n4.1 Employees who attained higher qualification (i.e., Degree or Diploma in a relevant discipline) and have demonstrated potential and readiness to assume larger responsibilities may be recommended for internal appointment\nto a higher job grade.  \n## 4.2\nCandidates for internal appointment will be interviewed by a panel\ncomprising:  \n|a)|For Executives|:|Independent Head of Department /<br>Head of Branch and HR Business<br>Partner|\n|---|---|---|---|\n|b)<br>|For Non-executives|:|Head of Branch and HR Business<br>Partner|  \n4.3 Successful candidates will be internally appointed with effect from 1 January.",
-    "metadata": {
-      "source": "Appointment.pdf",
-      "link": "Appointment%2Epdf"
-    },
-    "context": "The chunk outlines the policy and process for internal appointments within SP Group, detailing eligibility criteria, interview panel composition, and the effective date of appointment for employees being considered for higher job grades based on qualifications, potential, and readiness for larger responsibilities."
-  },
-  {
-    "chunk_index": 23,
-    "section": "4.4 **Approving Authority for Internal Appointment**",
-    "content": "# 4.4 **Approving Authority for Internal Appointment**  \n|Executive & Non-executives| Head HR and Head of Department (for Employees of SP) or Head of Subsidiary (for Employees of SP Subsidiaries)|\n|--|--|",
-    "metadata": {
-      "source": "Appointment.pdf",
-      "link": "Appointment%2Epdf"
-    },
-    "context": "Approving authority for internal appointments, detailing the roles of Head HR and relevant department heads in the decision-making process for promoting employees to higher job grades within SP Group."
-  },
-  {
-    "chunk_index": 24,
-    "section": "**5.** **PROMOTION**",
-    "content": "# **5.** **PROMOTION**",
-    "metadata": {
-      "source": "Appointment.pdf",
-      "link": "Appointment%2Epdf"
-    },
-    "context": "The chunk on **Promotion** outlines the criteria, process, and approving authority for advancing employees to higher job grades within SP Group, situated within the broader policies and procedures on employee appointment, recruitment, internal appointment, re-employment, and scholarships."
-  },
-  {
-    "chunk_index": 25,
-    "section": "**5.1** **Promotion Criteria**",
-    "content": "# **5.1** **Promotion Criteria**  \n5.1.1 Promotion is conditional upon:  \na) the Employee being a confirmed employee;  \nb) the Employee having good performance over the past years as\nper performance appraisal;  \nc) enlarged job scope and responsibilities that is commensurate with\nthe next higher grade; and  \nd) His potential and ability, i.e., skillsets and competencies to\nperform in the next higher job grade.",
-    "metadata": {
-      "source": "Appointment.pdf",
-      "link": "Appointment%2Epdf"
-    },
-    "context": "The chunk outlines the criteria for employee promotion within SP Group, detailing the conditions related to confirmation of employment, performance appraisal, job scope, and required competencies, as part of the broader policies and procedures on career progression in the Employee Handbook."
-  },
-  {
-    "chunk_index": 26,
-    "section": "5.2 **Promotion Process**",
-    "content": "# 5.2 **Promotion Process**  \n5.2.1 Job grades are tied to jobs. Employees must be promoted to a higher\nlevel job to be emplaced on a higher-level salary range.  \n5.2.2 Head of Department (for Employees of SP) or Head of Subsidiary (for Employees of SP Subsidiaries) will assess and recommend the Employees' suitability for promotion.  \n5.2.3 All recommendations for promotion, as well as the proposed new salary upon promotion, are to be reviewed by Head HR and thereafter GCEO\nfor approval.  \n5.2.4 Promotion exercises are conducted during the increment cycle, which takes effect on 1 July.  \n5.2.5 The salary to be granted on promotion will be in accordance with the provisions under Section F of the Employee Handbook.  \n5.3 **Approving Authority for Promotion**\n|Executive & Non-executives|GCEO|\n|--|--|",
-    "metadata": {
-      "source": "Appointment.pdf",
-      "link": "Appointment%2Epdf"
-    },
-    "context": "This chunk outlines the promotion process and approval authority within SP Group, detailing criteria, assessment, review, and salary provisions tied to job grades, as part of the broader policies on employee appointment and career progression in the Employee Handbook."
-  },
-  {
-    "chunk_index": 27,
-    "section": "**6.** **RE-EMPLOYMENT AFTER RETIREMENT**",
-    "content": "# **6.** **RE-EMPLOYMENT AFTER RETIREMENT**  \n6.1 All permanent Employees who reach the statutory retirement age shall be considered for re-employment after retirement. Eligible Employees may by mutual consent, be re-employed up to the age of 69 years, subject to a yearly review based on the eligibility criteria outlined in 6.2.  \n6.2 The relevant SP Group Company assesses the Employees as:  \ni) being medically fit to continue working; and\nii) whose work performance are assessed to be at least satisfactory.  \n“Satisfactory” refers to at least a Band 4 performance rating in one year out\nof the latest 2 years of appraisal preceding the statutory retirement, or the\nnext re-employment.  \n6.3 Probation is waived for re-employment contracts.  \n6.4 Employees are not required to have a one-day break in service before the\ncommencement of re-employment.",
-    "metadata": {
-      "source": "Appointment.pdf",
-      "link": "Appointment%2Epdf"
-    },
-    "context": "This chunk outlines the policy and procedures for re-employment of permanent employees after reaching statutory retirement age, including eligibility criteria, performance assessment, medical fitness, contract terms, and continuity of service without a break. It is part of the broader appointment framework in the SP Group Employee Handbook."
-  },
-  {
-    "chunk_index": 28,
-    "section": "6.5 **Re-employment planning and consultation**",
-    "content": "# 6.5 **Re-employment planning and consultation**  \nEmployees shall be engaged on re-employment issues as early as possible,\nnot less than 6 months prior to re-employment or extension of reemployment. This can be done as part of the regular performance appraisal process.  \nThe discussions should cover possible re-employment arrangements, the\ncompetencies and training they may require should they be re-deployed to\na different job, and the pay and benefits employees can expect upon reemployment.  \nFor Employees who fall short of the re-employment eligibility criteria in Para\n6.2, supervisors should inform them about the need to improve their\nperformance at this stage.",
-    "metadata": {
-      "source": "Appointment.pdf",
-      "link": "Appointment%2Epdf"
-    },
-    "context": "This chunk outlines the planning and consultation process for re-employment of employees approaching statutory retirement, detailing timelines, discussions on job arrangements, training, and performance improvement for those not meeting eligibility criteria, as part of broader re-employment policies in the SP Group Employee Handbook."
-  },
-  {
-    "chunk_index": 29,
-    "section": "6.6 **Job arrangements for re-employment**",
-    "content": "# 6.6 **Job arrangements for re-employment**  \nThere should be flexibility in the job arrangements for re-employed\nEmployees. The following arrangements may be adopted:  \na) re-employing Employees in the same jobs;\nb) re-employing Employees with modifications to their existing jobs;\nc) re- deploying Employees to different jobs on renegotiated terms; or\nd) re-employing Employees on other work arrangements mutually agreed between both parties.  \nFor those who have previously held larger or senior roles, the company\nmay consider more significant adjustments to their job arrangements, taking into account business requirements and the need for leadership\nrenewal.  \n6.7 Where the job scope will be modified, or the re-employed Employee is expected to take on a different position, the relevant SP Group Company\nshall inform and prepare the Employee in good time. Where applicable, adequate training shall be provided to the Employees to help them ease into their new roles.  \nOn their part, Employees should keep an open mind about the reemployment options presented by the relevant SP Group Company.  \n6.8 Subject to prevailing tripartite guidelines and relevant SP Group Company’s\ndiscretion, eligible Employees shall be offered re-employment contracts as\nfollows:\na) 3-year contract at statutory retirement age, subject to meeting the eligibility criteria; and\nb) 2-year contract upon completion of (a), subject to meeting the eligibility criteria.  \n6.9 Re-employed Employees shall be placed on the Medisave-cum-SubsidisedOutpatient (MSO) Scheme, and the 2007 Vacation Leave Scheme. The length of service shall be recognized for the purpose of leave entitlements and long service awards.  \n6.10 Employees who do not wish to be re-employed after retirement can opt out\nby informing their Head of Department / Head of Branch in writing six months\nbefore retirement.  \n6.11 If the relevant SP Group Company is unable to re-employ eligible\nEmployees, an Employpromment Assistance Payment (EAP) shall be payable based on the Tripartite Guidelines on the Re-employment of Older\nEmployees.",
-    "metadata": {
-      "source": "Appointment.pdf",
-      "link": "Appointment%2Epdf"
-    },
-    "context": "This chunk outlines the policies and procedures for re-employment of employees after statutory retirement, detailing job arrangement flexibility, contract terms, eligibility criteria, training provisions, and options for employees who opt out or cannot be re-employed. It is part of Section A, focusing on appointment and employment lifecycle management within SP Group."
-  },
-  {
-    "chunk_index": 30,
-    "section": "**7.** **LOCAL SCHOLARSHIPS**",
-    "content": "# **7.** **LOCAL SCHOLARSHIPS**  \n7.1 SP Group offers local undergraduate scholarships annually to attract\ncandidates with outstanding academic results, excellent co-curricular\nrecords and strong leadership qualities to join SP Group after graduation.  \n7.2 SP HR will make the necessary arrangements for the scholarship\nadvertisement, shortlisting of applications, interview, selection and\napproval by senior management.  \n7.3 The Scholarship awardees can be assigned to any of the companies within SP Group to serve their bond period on completion of their studies. The bond is between two to four years from the date the candidate assumes duty, depending on his remaining years of study and the type of scholarship offered.  \n7.4 The scholars are required to complete one practical industrial attachment\nwith SP Group.",
-    "metadata": {
-      "source": "Appointment.pdf",
-      "link": "Appointment%2Epdf"
-    },
-    "context": "This chunk outlines SP Group's policy on local undergraduate scholarships, detailing the purpose, selection process, bond requirements, and mandatory industrial attachment, as part of the company's broader appointment and recruitment framework."
-  }
-]
+import os
+import re
+import logging
+import time
+import json
+from typing import List
+from datetime import datetime
+from dateutil import tz
+
+from pydantic import BaseModel, Field
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.runnables import RunnablePassthrough
+
+from langfuse import Langfuse
+from langfuse import get_client
+
+from modules.embeddings import EmbeddingClient
+from modules.models import ChatClient
+from modules.database import RetrieverWithScores, VectorStore
+from modules.prompts import get_prompt_template
+from model_source.modules.models import ChatClient, HumanMessage, SystemMessage
+from config import Config
+
+from openai import OpenAI
+
+logger = logging.getLogger(__name__)
+
+config = Config()
+embedding_client = EmbeddingClient(
+    provider='azure',
+    api_key=config.config['AZURE_OPENAI_API_KEY'],
+    api_endpoint=config.get('models','AZURE_OPENAI_ENDPOINT'),
+    api_version=config.get('models','AZURE_OPENAI_API_VERSION'),
+    deployment=config.get('models','AZURE_OPENAI_DEPLOYMENT')
+)
+chat_client = ChatClient(
+    provider="azure",
+    api_key=config.config['AZURE_OPENAI_API_KEY'],
+    api_endpoint=config.get('models','AZURE_OPENAI_ENDPOINT'),
+    api_version=config.get('models','AZURE_OPENAI_API_VERSION'),
+    deployment_name=config.get('models','AZURE_OPENAI_CHAT_DEPLOYMENT'),
+    )
+
+os.environ["LANGFUSE_PUBLIC_KEY"] = config.get('tracing','LANGFUSE_PUBLIC_KEY')
+os.environ["LANGFUSE_SECRET_KEY"] = config.get('tracing','LANGFUSE_SECRET_KEY')
+os.environ["LANGFUSE_HOST"] = config.get('tracing','LANGFUSE_HOST')
+
+lf = get_client()
+
+client = OpenAI(
+    base_url=config.get('OpenAI', 'URL'),
+    api_key="dummy",  # Required but not used
+    default_headers={
+        'model': 'openai',
+        'subModel': config.get('OpenAI', 'MODEL'),
+        'client-id': config.get('OpenAI', 'client_id'),
+        'client-secret': config.get('OpenAI', 'client_secret'),
+        'api-version': config.get('OpenAI', 'API_VERSION')
+
+    }
+)
+
+JSON_FOLDER = os.path.join(os.path.expanduser("~"), "hr-chatbot", "src", "preprocessing", "output_json")
+TOP_K = 5
+
+def _load_all_chunks() -> list[dict]:
+    """Load all chunks from every JSON file in output_json."""
+    all_chunks = []
+    for fname in os.listdir(JSON_FOLDER):
+        if fname.endswith(".json"):
+            with open(os.path.join(JSON_FOLDER, fname), "r", encoding="utf-8") as f:
+                chunks = json.load(f)
+            all_chunks.extend(chunks)
+    return all_chunks
+
+def _normalize_section(section: str) -> str:
+    """Strip markdown bold markers, collapse whitespace, and lowercase for comparison."""
+    text = re.sub(r'\*+', '', section)   # remove ** markers
+    text = re.sub(r'\s+', ' ', text)     # collapse double spaces left behind
+    return text.strip().lower()
+
+def DB_search(query: str, question_section: str = "") -> list[dict]:
+    with lf.start_as_current_observation(
+        as_type="retriever",
+        name="DBSearch"
+    ) as DBSearch_span:
+        retrieval_list = []
+        try:
+            all_chunks = _load_all_chunks()
+            q_sec = _normalize_section(question_section)
+
+            # If the question has no section, skip retrieval — handled upstream in pipeline
+            if not q_sec:
+                print("DB_search: question has no section — skipping retrieval")
+                DBSearch_span.update(input=query, output=[])
+                return []
+
+            # Exact match after stripping markdown bold markers and whitespace
+            # Also skips chunks whose section is empty after normalization
+            matched = [
+                c for c in all_chunks
+                if _normalize_section(c.get("section", "")) == q_sec
+            ]
+
+            if not matched:
+                print(f"DB_search: no chunk exactly matched section '{question_section}'")
+                DBSearch_span.update(input=query, output=[])
+                return []
+
+            # If multiple chunks share the same section, take the first one
+            best_chunk = matched[0]
+            print(f"DB_search: matched {len(matched)} chunk(s) for section '{question_section}' — using chunk_index {best_chunk.get('chunk_index', '?')}")
+
+            source = best_chunk.get("metadata", {}).get("source", "Unknown")
+            retrieval_list.append({
+                "title":        source,
+                "section":      best_chunk.get("section", ""),
+                "link":         best_chunk.get("metadata", {}).get("link", ""),
+                "content":      best_chunk.get("content", ""),
+                "context":      best_chunk.get("context", ""),
+                "date_updated": str(datetime(9999, 1, 1)),
+            })
+            print(f"DB_search: matched chunk → [{source}] {best_chunk.get('section', '')}")
+
+        except Exception as e:
+            print(f"Error found: {e}")
+            return []
+
+        DBSearch_span.update(input=query, output=retrieval_list)
+        return retrieval_list
+
+def query_rewrite(msg_list):
+
+    # start Langfuse tracing of user query rewrite
+    
+    with lf.start_as_current_observation(
+        as_type="generation",
+        name="QueryRewrite",
+        model=config.get('OpenAI', 'QUERY_REWRITE_MODEL')
+    ) as rewrite_span:
+
+        if len(msg_list) <= 1:
+            logger.warning(f"Skipping query rewrite: {msg_list[-1]['content']}")
+            # rewrite_span.end()
+            return
+        
+        _query_list = []
+        for m in msg_list:
+            if m['role'] == 'system':
+                continue
+            elif m['role'] == 'assistant':
+                _query_list.append(f"{m['role']}: {m['content'].split('__References__')[0]}")
+            else:
+                _query_list.append(f"{m['role']}: {m['content']}")
+
+        # Query Rewrite
+        rewrite_msg_list = [
+            {
+                'role': 'system',
+                'content': get_prompt_template('SYS_PROMPT_REWRITE')
+            },
+            {
+                'role': 'user',
+                'content': '\n'.join(_query_list)
+            }
+        ]
+        response = client.chat.completions.create(
+            messages=rewrite_msg_list,
+            model=config.get('OpenAI', 'MODEL'),
+            temperature=0,
+            max_tokens=500
+        )
+        new_query_str = response.choices[0].message.content
+
+        msg_list[-1]['content'] = new_query_str
+        # trace_metric_list = create_trace_metric_list('QueryRewrite',rewrite_msg_list,new_query_str)
+        # update_span_list(rewrite_span,trace_metric_list)
+        rewrite_span.update(input=rewrite_msg_list, output=new_query_str)
+
+        return 
+
+
+def dcc_prepare_chat_messages(
+        msg_list,
+        system_content,
+        doc_dict = {},
+        retrieval_list_out = None,
+        question_section: str = "",
+    ):
+    '''
+    For chat, retrieve the chunk whose section matches question_section and
+    return the updated messages. If no section match is found, the context
+    will be empty and the LLM is instructed not to hallucinate.
+    '''
+    query_str = msg_list[-1]['content']
+
+    # Retrieve context — matched by section header
+    retrieval_list = DB_search(query_str, question_section=question_section)
+    if retrieval_list_out is not None:
+        retrieval_list_out.extend(retrieval_list)
+  
+    ind = 0
+    for i in retrieval_list:
+        if i["title"] not in doc_dict:
+            ind += 1
+            # alink = '<a href="'+i["link"]+'" target="_blank">'+i["title"]+'</a>'
+            doc_dict[i['title']] = {
+                'text': f'* [{ind}] [{i["title"]}]({i["link"]}) - Last Updated: {datetime.fromisoformat(i["date_updated"]).strftime("%d %b %Y")}',
+                #'text': f'* [{ind}] {alink}',
+                'index': ind
+            }
+
+    # Prepare new context
+    context_str = ''
+    has_empty_section = False
+    for i in retrieval_list:
+        context_str += get_prompt_template('CONTEXT_TEMPLATE',
+                                            counter=doc_dict[i['title']]['index'],
+                                            title=i['title'],
+                                            content=i['content']
+                                            )
+        if not i.get('section', '').strip():
+            has_empty_section = True
+
+    # If the retrieved chunk has no section header, warn the LLM not to hallucinate
+    if has_empty_section:
+        context_str += (
+            "\n\n[INSTRUCTION: The retrieved content above does not correspond to a specific "
+            "policy section. If it is insufficient to answer the query, respond with: "
+            "'I'm sorry, I don't have enough information to answer this question. "
+            "Please contact HR directly for assistance.' Do not make assumptions or invent details.]"
+        )
+
+    _query_list = []
+    for m in msg_list:
+        if m['role'] == 'system':
+            continue
+        elif m['role'] == 'assistant':
+            _query_list.append(
+                f"{m['role']}: {m['content'].split('__References__')[0]}"
+            )
+        else:
+            _query_list.append(
+                f"{m['role']}: {m['content']}"
+            )
+    new_query_str = get_prompt_template('RAG_PROMPT_TEMPLATE', context_str=context_str, query_str='\n'.join(_query_list))
+
+    # Update query
+    return (
+        [
+            {"role": "system", "content": system_content},
+            {"role": "user", "content": new_query_str},
+        ]
+    )
+
+
+class PredictiveQuestion(BaseModel):
+    probability: float = Field(description="probability")
+    question: str = Field(description="question")
+
+
+class PredictiveQuestions(BaseModel):
+    questions: List[PredictiveQuestion] = Field(description="list of predictive questions")
+
+
+def get_predictive_question_generator(llm):
+
+    # output_parser = PydanticToolsParser(tools=[PredictiveQuestions])
+
+    prompt = ChatPromptTemplate.from_messages(
+        [
+            ("system", get_prompt_template('SYS_PROMPT_PREDICTIVE')),
+            ("user", "{context}"),
+        ]
+    )
+
+    structured_llm = llm.with_structured_output(PredictiveQuestions)
+
+    predictor = {"context": RunnablePassthrough()} | prompt | structured_llm
+    return predictor
+
+
+DEFAULT_METADATA = {
+    "ls_provider": "azure",
+    "ls_model_name": "gpt-4o",
+    "ls_model_type": "chat",
+}
+
+DEFAULT_MODEL_PARAMETERS = {
+    "maxTokens": 1024,
+    "temperature": 0,
+    "top_p": 1,
+    "frequency_penalty": 0,
+    "presence_penalty": 0,
+}
+
+# Creates score on Langfuse for tracing user feedback
+def trace_score(dcc_config, trace_id, score, comment):
+    os.environ["LANGFUSE_PUBLIC_KEY"] = dcc_config.get('tracing','LANGFUSE_PUBLIC_KEY')
+    os.environ["LANGFUSE_SECRET_KEY"] = dcc_config.get('tracing','LANGFUSE_SECRET_KEY')
+    os.environ["LANGFUSE_HOST"] = dcc_config.get('tracing','LANGFUSE_HOST')
+
+    lf = get_client()
+
+    lf.create_score(
+        trace_id=trace_id,
+        name="feedback",
+        value=score,
+        comment=comment,
+    )
+
+    lf.flush()
+
+# Creates a default metric list for tracing
+def create_trace_metric_list(name,input,output):
+    trace_metric_list = {
+        'name': name,
+        'input': input,
+        'output': output,
+        'model': 'gpt-4.1',
+        'metadata': {
+            "provider": "azure",
+            "model_name": "gpt-4.1",
+            "model_type": "chat",
+        },
+    }
+    return trace_metric_list
+
+# LLM call for title generation
+def GenerateTitle(chat_client,prompt,message,conversation_id,request,messages,title_span ):
+    response, token_usage = chat_client.chat([
+                SystemMessage(content=get_prompt_template('SYS_GEN_TITLE_PROMPT')),
+                HumanMessage(content=prompt+message.message)
+            ])
+    title = response.strip().replace('"', '')
+    
+    trace_metric_list = create_trace_metric_list('GenerateTitle',messages,title)
+    update_span_list(title_span,trace_metric_list)
+
+    title_span.update_trace(
+        name='Title',
+        session_id=f"cnv-{conversation_id}",
+        user_id=request.user.username,
+        input=message.message,
+        output=title
+    )
+    return token_usage, title
+
+# Updates span with default args
+def update_span_list(span,trace_metric_list):
+    span.update(
+        input= trace_metric_list['input'],
+        output= trace_metric_list['output'],
+        model = trace_metric_list['model'],
+        metadata = trace_metric_list['metadata'],
+    )
