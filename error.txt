@@ -1,45 +1,83 @@
-import json
-import os
-import sys
-from pathlib import Path
+from llm_core import SAP_DATA_DICTIONARY  # reuse the same dictionary defined in the pipeline
 
-# --- Adjust these paths to match your environment ---
-PROJECT_ROOT = Path(os.path.expanduser("~")) / "hr-chatbot" / "src"
-sys.path.insert(0, str(PROJECT_ROOT))
-sys.path.insert(0, str(PROJECT_ROOT / "server"))
+EVAL_SYSTEM_PROMPT = """You are evaluating a data retrieval system for an HR chatbot.
+Your job is to assess whether the fields retrieved from an employee database are
+necessary and sufficient to answer the given HR policy question.
 
-from server.model_source.config import Config
-from openai import AzureOpenAI
+Available field definitions (for context):
+{sap_data_dictionary}
 
-ANSWERED_FOLDER = Path(os.path.expanduser("~")) / "Downloads" / "llm_resending" / "answered"
-VALIDATION_FOLDER = Path(os.path.expanduser("~")) / "Downloads" / "llm_resending" / "validation"
-VALIDATION_FOLDER.mkdir(exist_ok=True)
+Respond ONLY with a valid JSON object — no markdown, no prose."""
 
-config = Config()
-az_client = AzureOpenAI(
-    api_key=config.config['AZURE_OPENAI_API_KEY'],
-    api_version=config.get('models', 'AZURE_OPENAI_API_VERSION'),
-    azure_endpoint=config.get('models', 'AZURE_OPENAI_ENDPOINT'),
-    timeout=60,
-)
-AZ_MODEL = config.get('models', 'AZURE_OPENAI_CHAT_DEPLOYMENT')
+EVAL_USER_PROMPT = """Question: "{question}"
+Fields retrieved: {fields}
 
-# Load all answered JSON files — skip entries with no fields retrieved (empty list)
-all_entries = []
-for fname in sorted(os.listdir(ANSWERED_FOLDER)):
-    if not fname.endswith(".json"):
-        continue
-    with open(ANSWERED_FOLDER / fname, "r", encoding="utf-8") as f:
-        entries = json.load(f)
-    for entry in entries:
-        entry["_file"] = fname
-    all_entries.extend(entries)
+For each field, answer:
+1. Is this field needed to answer the question? (true / false)
+2. If false, why is it unnecessary?
 
-# Only validate answered entries that actually retrieved at least one field
-to_validate = [
-    e for e in all_entries
-    if e.get("status") == "answered" and e.get("required_fields")
-]
+Then give an overall verdict:
+- MINIMAL       : All fields are necessary and none are missing
+- OVER-RETRIEVED: Some fields are unnecessary
+- UNDER-RETRIEVED: Important fields are missing
+- EMPTY         : No fields were retrieved but personalization was needed
 
-print(f"Total entries loaded  : {len(all_entries)}")
-print(f"Entries to validate   : {len(to_validate)} (answered with ≥1 field retrieved)")
+Return as JSON with this exact structure:
+{{
+  "evaluation": {{
+    "<field_name>": {{"necessary": true/false, "reason": "<short reason>"}}
+  }},
+  "verdict": "MINIMAL | OVER-RETRIEVED | UNDER-RETRIEVED | EMPTY",
+  "verdict_reason": "<one sentence explaining the verdict>"
+}}"""
+
+
+def evaluate_entry(entry: dict) -> dict:
+    question = entry.get("question", "")
+    fields = entry.get("required_fields", [])
+
+    messages = [
+        {
+            "role": "system",
+            "content": EVAL_SYSTEM_PROMPT.format(sap_data_dictionary=SAP_DATA_DICTIONARY),
+        },
+        {
+            "role": "user",
+            "content": EVAL_USER_PROMPT.format(
+                question=question,
+                fields=json.dumps(fields),
+            ),
+        },
+    ]
+
+    response = az_client.chat.completions.create(
+        model=AZ_MODEL,
+        messages=messages,
+        temperature=0,
+        max_tokens=1024,
+        top_p=1,
+        frequency_penalty=0,
+        presence_penalty=0,
+    )
+    raw = response.choices[0].message.content.strip()
+
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        # LLM returned something non-JSON — store the raw text for inspection
+        parsed = {"raw_response": raw, "parse_error": True}
+
+    return {
+        "policy_source":   entry.get("policy_source", ""),
+        "section":         entry.get("section", ""),
+        "question_number": entry.get("question_number"),
+        "question":        question,
+        "fields_retrieved": fields,
+        "evaluation":      parsed.get("evaluation", {}),
+        "verdict":         parsed.get("verdict", "PARSE_ERROR"),
+        "verdict_reason":  parsed.get("verdict_reason", ""),
+        "_file":           entry.get("_file", ""),
+        "_parse_error":    parsed.get("parse_error", False),
+    }
+
+print("evaluate_entry() defined — ready to run.")
