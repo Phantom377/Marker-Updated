@@ -1,21 +1,40 @@
-# --- Full detail view for OVER-RETRIEVED and UNDER-RETRIEVED entries ---
-problem_verdicts = {"OVER-RETRIEVED", "UNDER-RETRIEVED", "EMPTY", "ERROR", "PARSE_ERROR"}
+import json
+import os
+import random
+from pathlib import Path
+from datetime import datetime
 
-problems = [r for r in results if r["verdict"] in problem_verdicts]
-print(f"Entries needing attention: {len(problems)}")
-print()
+ANSWERED_FOLDER = Path(os.path.expanduser("~")) / "Downloads" / "llm_resending" / "answered"
+OUTPUT_FOLDER   = Path(os.path.expanduser("~")) / "Downloads" / "llm_resending"
+SAMPLE_SIZE     = 30
 
-for r in problems:
-    print("=" * 70)
-    print(f"{r['policy_source']} | {r['section']} | Q{r['question_number']}")
-    print(f"Verdict : {r['verdict']}")
-    print(f"Reason  : {r['verdict_reason']}")
-    print(f"Fields  : {r['fields_retrieved']}")
-    print(f"Q: {r['question']}")
-    if r.get("evaluation"):
-        print("Field evaluation:")
-        for field, detail in r["evaluation"].items():
-            needed = "YES" if detail.get("necessary") else " NO"
-            reason = detail.get("reason", "")
-            print(f"  [{needed}] {field}: {reason}")
-    print()
+# Load all answered entries across every JSON file
+all_entries = []
+for fname in sorted(os.listdir(ANSWERED_FOLDER)):
+    if not fname.endswith(".json"):
+        continue
+    with open(ANSWERED_FOLDER / fname, "r", encoding="utf-8") as f:
+        entries = json.load(f)
+    for entry in entries:
+        entry["_source_file"] = fname
+    all_entries.extend(entries)
+
+# Only sample from answered entries (skip skipped / timeout / error)
+answered_entries = [e for e in all_entries if e.get("status") == "answered"]
+
+print(f"Total entries loaded : {len(all_entries)}")
+print(f"Answered entries     : {len(answered_entries)}")
+
+if len(answered_entries) < SAMPLE_SIZE:
+    print(f"Warning: only {len(answered_entries)} answered entries available — sampling all of them.")
+    sample = answered_entries
+else:
+    sample = random.sample(answered_entries, SAMPLE_SIZE)
+
+timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+out_path  = OUTPUT_FOLDER / f"sample_{SAMPLE_SIZE}_{timestamp}.json"
+
+with open(out_path, "w", encoding="utf-8") as f:
+    json.dump(sample, f, ensure_ascii=False, indent=2)
+
+print(f"Sampled {len(sample)} questions → {out_path}")
