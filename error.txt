@@ -1,41 +1,19 @@
-from datetime import datetime
-
-# Run evaluation for all entries that have retrieved fields
-# Results are saved incrementally so you can stop mid-run and resume later
-
-timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-out_path = VALIDATION_FOLDER / f"validation_{timestamp}.json"
-
-results = []
-total = len(to_validate)
-
-for i, entry in enumerate(to_validate, 1):
-    label = f"{entry.get('policy_source','')} | {entry.get('section','')} | Q{entry.get('question_number','')}"
-    print(f"[{i}/{total}] {label}")
-    try:
-        result = evaluate_entry(entry, policy_chunks)
-        verdict = result["verdict"]
-    except Exception as e:
-        print(f"  ERROR: {e}")
-        result = {
-            "policy_source":    entry.get("policy_source", ""),
-            "section":          entry.get("section", ""),
-            "question_number":  entry.get("question_number"),
-            "question":         entry.get("question", ""),
-            "fields_retrieved": entry.get("required_fields", []),
-            "evaluation":       {},
-            "verdict":          "ERROR",
-            "verdict_reason":   str(e),
-            "_file":            entry.get("_file", ""),
-            "_parse_error":     False,
-        }
-        verdict = "ERROR"
-
-    print(f"  → {verdict}")
-    results.append(result)
-
-    # Save incrementally
-    with open(out_path, "w", encoding="utf-8") as f:
-        json.dump(results, f, ensure_ascii=False, indent=2)
-
-print(f"\nDone. Saved {len(results)} results → {out_path}")
+{
+  "policy_source": "Appointment.pdf.md",
+  "generated_at": "2026-04-28T08:20:53Z",
+  "question_count": 3,
+  "questions": [
+    {
+      "question_number": 1,
+      "question": "What are the eligibility criteria for re-employment after reaching statutory retirement age?"
+    },
+    {
+      "question_number": 2,
+      "question": "Are part-time employees eligible for the same benefits as full-time employees, and how are these benefits calculated?"
+    },
+    {
+      "question_number": 3,
+      "question": "What happens if two employees working in the company get married and their roles create a conflict of interest?"
+    }
+  ]
+}
