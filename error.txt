@@ -1,130 +1,41 @@
-# Add the llm_resending directory to sys.path so llm_core can be imported directly
-NOTEBOOK_DIR = Path(os.path.expanduser("~")) / "Downloads" / "llm_resending"
-if str(NOTEBOOK_DIR) not in sys.path:
-    sys.path.insert(0, str(NOTEBOOK_DIR))
+from datetime import datetime
 
-from llm_core import SAP_DATA_DICTIONARY
+# Run evaluation for all entries that have retrieved fields
+# Results are saved incrementally so you can stop mid-run and resume later
 
-EVAL_SYSTEM_PROMPT = """You are evaluating a data retrieval system for an HR chatbot.
-Your job is to assess whether the fields retrieved from an employee database are
-necessary and sufficient to answer the given HR policy question.
+timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+out_path = VALIDATION_FOLDER / f"validation_{timestamp}.json"
 
-Available field definitions (for context):
-{sap_data_dictionary}
+results = []
+total = len(to_validate)
 
-Respond ONLY with a valid JSON object — no markdown, no prose."""
-
-EVAL_USER_PROMPT = """Question: "{question}"
-Fields retrieved: {fields}
-
-Policy chunk(s) used to answer this question:
-{policy_context}
-
-Using the policy chunk(s) above as the source of truth, for each retrieved field answer:
-1. Is this field needed to answer the question based on what the policy actually says? (true / false)
-2. If false, why is it unnecessary?
-
-Then give an overall verdict:
-- MINIMAL       : All fields are necessary and none are missing
-- OVER-RETRIEVED: Some fields are unnecessary
-- UNDER-RETRIEVED: Important fields are missing
-- EMPTY         : No fields were retrieved but personalization was needed
-
-If the verdict is UNDER-RETRIEVED or EMPTY, list the additional fields from the Available
-field definitions that should have been retrieved, and explain why each is needed.
-
-Return as JSON with this exact structure:
-{{
-  "evaluation": {{
-    "<field_name>": {{"necessary": true/false, "reason": "<short reason>"}}
-  }},
-  "verdict": "MINIMAL | OVER-RETRIEVED | UNDER-RETRIEVED | EMPTY",
-  "verdict_reason": "<one sentence explaining the verdict>",
-  "missing_fields": [
-    {{"field": "<field_name>", "reason": "<why this field is needed to answer the question>"}}
-  ]
-}}
-
-Note: "missing_fields" should be an empty list [] when the verdict is MINIMAL or OVER-RETRIEVED."""
-
-
-def _build_policy_context(entry: dict, policy_chunks: dict) -> str:
-    """Look up chunks from output_json matching this entry's policy_source and section."""
-    policy_source = entry.get("policy_source", "")
-    section       = entry.get("section", "").strip()
-
-    # policy_source may be "Appointment.json" or bare "Appointment"
-    stem = Path(policy_source).stem if policy_source else ""
-    chunks = policy_chunks.get(stem, [])
-
-    if not chunks:
-        return "No policy chunk file found for this question."
-
-    # Filter to the matching section; fall back to all chunks if none match
-    if section:
-        matched = [c for c in chunks if c.get("section", "").strip() == section]
-    else:
-        matched = []
-
-    if not matched:
-        matched = chunks  # fallback: include all chunks from the policy file
-
-    # Limit to 5 chunks to avoid token bloat
-    return "\n\n".join(
-        f"[{i+1}] {c.get('metadata', {}).get('source', stem)} — {c.get('section', '(no section)')}\n{c.get('content', '')}"
-        for i, c in enumerate(matched[:5])
-    )
-
-
-def evaluate_entry(entry: dict, policy_chunks: dict) -> dict:
-    question = entry.get("question", "")
-    fields   = entry.get("required_fields", [])
-
-    policy_context = _build_policy_context(entry, policy_chunks)
-
-    messages = [
-        {
-            "role": "system",
-            "content": EVAL_SYSTEM_PROMPT.format(sap_data_dictionary=SAP_DATA_DICTIONARY),
-        },
-        {
-            "role": "user",
-            "content": EVAL_USER_PROMPT.format(
-                question=question,
-                fields=json.dumps(fields),
-                policy_context=policy_context,
-            ),
-        },
-    ]
-
-    response = az_client.chat.completions.create(
-        model=AZ_MODEL,
-        messages=messages,
-        temperature=0,
-        max_tokens=1024,
-        top_p=1,
-        frequency_penalty=0,
-        presence_penalty=0,
-    )
-    raw = response.choices[0].message.content.strip()
-
+for i, entry in enumerate(to_validate, 1):
+    label = f"{entry.get('policy_source','')} | {entry.get('section','')} | Q{entry.get('question_number','')}"
+    print(f"[{i}/{total}] {label}")
     try:
-        parsed = json.loads(raw)
-    except json.JSONDecodeError:
-        parsed = {"raw_response": raw, "parse_error": True}
+        result = evaluate_entry(entry, policy_chunks)
+        verdict = result["verdict"]
+    except Exception as e:
+        print(f"  ERROR: {e}")
+        result = {
+            "policy_source":    entry.get("policy_source", ""),
+            "section":          entry.get("section", ""),
+            "question_number":  entry.get("question_number"),
+            "question":         entry.get("question", ""),
+            "fields_retrieved": entry.get("required_fields", []),
+            "evaluation":       {},
+            "verdict":          "ERROR",
+            "verdict_reason":   str(e),
+            "_file":            entry.get("_file", ""),
+            "_parse_error":     False,
+        }
+        verdict = "ERROR"
 
-    return {
-        "policy_source":    entry.get("policy_source", ""),
-        "section":          entry.get("section", ""),
-        "question_number":  entry.get("question_number"),
-        "question":         question,
-        "fields_retrieved": fields,
-        "evaluation":       parsed.get("evaluation", {}),
-        "verdict":          parsed.get("verdict", "PARSE_ERROR"),
-        "verdict_reason":   parsed.get("verdict_reason", ""),
-        "missing_fields":   parsed.get("missing_fields", []),
-        "_file":            entry.get("_file", ""),
-        "_parse_error":     parsed.get("parse_error", False),
-    }
+    print(f"  → {verdict}")
+    results.append(result)
 
-print("evaluate_entry() defined — ready to run.")
+    # Save incrementally
+    with open(out_path, "w", encoding="utf-8") as f:
+        json.dump(results, f, ensure_ascii=False, indent=2)
+
+print(f"\nDone. Saved {len(results)} results → {out_path}")
