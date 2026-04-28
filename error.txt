@@ -1,40 +1,57 @@
 import json
 import os
-import random
+import sys
 from pathlib import Path
-from datetime import datetime
 
-VALIDATION_FOLDER = Path(os.path.expanduser("~")) / "Downloads" / "llm_resending" / "validation"
-OUTPUT_FOLDER     = Path(os.path.expanduser("~")) / "Downloads" / "llm_resending"
-SAMPLE_SIZE       = 30
+# --- Adjust these paths to match your environment ---
+PROJECT_ROOT = Path(os.path.expanduser("~")) / "hr-chatbot" / "src"
+sys.path.insert(0, str(PROJECT_ROOT))
+sys.path.insert(0, str(PROJECT_ROOT / "server"))
 
-# Load all entries across every validation JSON file
+from server.model_source.config import Config
+from openai import AzureOpenAI
+
+ANSWERED_FOLDER    = Path(os.path.expanduser("~")) / "Downloads" / "llm_resending" / "answered"
+VALIDATION_FOLDER  = Path(os.path.expanduser("~")) / "Downloads" / "llm_resending" / "validation"
+OUTPUT_JSON_FOLDER = Path(os.path.expanduser("~")) / "Downloads" / "llm_resending" / "output_json"
+VALIDATION_FOLDER.mkdir(exist_ok=True)
+
+config = Config()
+az_client = AzureOpenAI(
+    api_key=config.config['AZURE_OPENAI_API_KEY'],
+    api_version=config.get('models', 'AZURE_OPENAI_API_VERSION'),
+    azure_endpoint=config.get('models', 'AZURE_OPENAI_ENDPOINT'),
+    timeout=60,
+)
+AZ_MODEL = config.get('models', 'AZURE_OPENAI_CHAT_DEPLOYMENT')
+
+# Load all answered JSON files — skip entries with no fields retrieved (empty list)
 all_entries = []
-for fname in sorted(os.listdir(VALIDATION_FOLDER)):
+for fname in sorted(os.listdir(ANSWERED_FOLDER)):
     if not fname.endswith(".json"):
         continue
-    with open(VALIDATION_FOLDER / fname, "r", encoding="utf-8") as f:
+    with open(ANSWERED_FOLDER / fname, "r", encoding="utf-8") as f:
         entries = json.load(f)
     for entry in entries:
-        entry["_source_file"] = fname
+        entry["_file"] = fname
     all_entries.extend(entries)
 
-# Skip entries where the LLM response failed to parse
-valid_entries = [e for e in all_entries if not e.get("_parse_error", False)]
+# Only validate answered entries that actually retrieved at least one field
+to_validate = [
+    e for e in all_entries
+    if e.get("status") == "answered" and e.get("required_fields")
+]
 
-print(f"Total entries loaded : {len(all_entries)}")
-print(f"Valid entries        : {len(valid_entries)} (excluding parse errors)")
+# Build chunk lookup from output_json: {"Appointment": [chunk, ...], ...}
+policy_chunks = {}
+if OUTPUT_JSON_FOLDER.exists():
+    for fname in sorted(os.listdir(OUTPUT_JSON_FOLDER)):
+        if not fname.endswith(".json"):
+            continue
+        stem = Path(fname).stem
+        with open(OUTPUT_JSON_FOLDER / fname, "r", encoding="utf-8") as f:
+            policy_chunks[stem] = json.load(f)
 
-if len(valid_entries) < SAMPLE_SIZE:
-    print(f"Warning: only {len(valid_entries)} valid entries available — sampling all of them.")
-    sample = valid_entries
-else:
-    sample = random.sample(valid_entries, SAMPLE_SIZE)
-
-timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-out_path  = OUTPUT_FOLDER / f"sample_{SAMPLE_SIZE}_{timestamp}.json"
-
-with open(out_path, "w", encoding="utf-8") as f:
-    json.dump(sample, f, ensure_ascii=False, indent=2)
-
-print(f"Sampled {len(sample)} questions → {out_path}")
+print(f"Total entries loaded  : {len(all_entries)}")
+print(f"Entries to validate   : {len(to_validate)} (answered with ≥1 field retrieved)")
+print(f"Policy chunk files    : {len(policy_chunks)} ({', '.join(policy_chunks.keys()) or 'none'})")
