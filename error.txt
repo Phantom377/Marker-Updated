@@ -122,10 +122,16 @@ def evaluate_fields(az_openai_client, model_name: str, query: str, required_sap_
         presence_penalty=0,
     )
     raw = response.choices[0].message.content.strip()
+    # Strip markdown code fences the LLM sometimes adds despite instructions
+    if raw.startswith("```"):
+        raw = raw.removeprefix("```json").removeprefix("```").strip()
+        if raw.endswith("```"):
+            raw = raw[:-3].strip()
     try:
         parsed = json.loads(raw)
     except json.JSONDecodeError:
         parsed = {"raw_response": raw, "parse_error": True}
+        print(f"  PARSE ERROR — raw response was:\n{raw[:500]}")
     return {
         "evaluation":     parsed.get("evaluation", {}),
         "verdict":        parsed.get("verdict", "PARSE_ERROR"),
