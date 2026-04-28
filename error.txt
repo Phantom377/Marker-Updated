@@ -1,57 +1,130 @@
-import json
-import os
-import sys
-from pathlib import Path
+# Add the llm_resending directory to sys.path so llm_core can be imported directly
+NOTEBOOK_DIR = Path(os.path.expanduser("~")) / "Downloads" / "llm_resending"
+if str(NOTEBOOK_DIR) not in sys.path:
+    sys.path.insert(0, str(NOTEBOOK_DIR))
 
-# --- Adjust these paths to match your environment ---
-PROJECT_ROOT = Path(os.path.expanduser("~")) / "hr-chatbot" / "src"
-sys.path.insert(0, str(PROJECT_ROOT))
-sys.path.insert(0, str(PROJECT_ROOT / "server"))
+from llm_core import SAP_DATA_DICTIONARY
 
-from server.model_source.config import Config
-from openai import AzureOpenAI
+EVAL_SYSTEM_PROMPT = """You are evaluating a data retrieval system for an HR chatbot.
+Your job is to assess whether the fields retrieved from an employee database are
+necessary and sufficient to answer the given HR policy question.
 
-ANSWERED_FOLDER    = Path(os.path.expanduser("~")) / "Downloads" / "llm_resending" / "answered"
-VALIDATION_FOLDER  = Path(os.path.expanduser("~")) / "Downloads" / "llm_resending" / "validation"
-OUTPUT_JSON_FOLDER = Path(os.path.expanduser("~")) / "Downloads" / "llm_resending" / "output_json"
-VALIDATION_FOLDER.mkdir(exist_ok=True)
+Available field definitions (for context):
+{sap_data_dictionary}
 
-config = Config()
-az_client = AzureOpenAI(
-    api_key=config.config['AZURE_OPENAI_API_KEY'],
-    api_version=config.get('models', 'AZURE_OPENAI_API_VERSION'),
-    azure_endpoint=config.get('models', 'AZURE_OPENAI_ENDPOINT'),
-    timeout=60,
-)
-AZ_MODEL = config.get('models', 'AZURE_OPENAI_CHAT_DEPLOYMENT')
+Respond ONLY with a valid JSON object — no markdown, no prose."""
 
-# Load all answered JSON files — skip entries with no fields retrieved (empty list)
-all_entries = []
-for fname in sorted(os.listdir(ANSWERED_FOLDER)):
-    if not fname.endswith(".json"):
-        continue
-    with open(ANSWERED_FOLDER / fname, "r", encoding="utf-8") as f:
-        entries = json.load(f)
-    for entry in entries:
-        entry["_file"] = fname
-    all_entries.extend(entries)
+EVAL_USER_PROMPT = """Question: "{question}"
+Fields retrieved: {fields}
 
-# Only validate answered entries that actually retrieved at least one field
-to_validate = [
-    e for e in all_entries
-    if e.get("status") == "answered" and e.get("required_fields")
-]
+Policy chunk(s) used to answer this question:
+{policy_context}
 
-# Build chunk lookup from output_json: {"Appointment": [chunk, ...], ...}
-policy_chunks = {}
-if OUTPUT_JSON_FOLDER.exists():
-    for fname in sorted(os.listdir(OUTPUT_JSON_FOLDER)):
-        if not fname.endswith(".json"):
-            continue
-        stem = Path(fname).stem
-        with open(OUTPUT_JSON_FOLDER / fname, "r", encoding="utf-8") as f:
-            policy_chunks[stem] = json.load(f)
+Using the policy chunk(s) above as the source of truth, for each retrieved field answer:
+1. Is this field needed to answer the question based on what the policy actually says? (true / false)
+2. If false, why is it unnecessary?
 
-print(f"Total entries loaded  : {len(all_entries)}")
-print(f"Entries to validate   : {len(to_validate)} (answered with ≥1 field retrieved)")
-print(f"Policy chunk files    : {len(policy_chunks)} ({', '.join(policy_chunks.keys()) or 'none'})")
+Then give an overall verdict:
+- MINIMAL       : All fields are necessary and none are missing
+- OVER-RETRIEVED: Some fields are unnecessary
+- UNDER-RETRIEVED: Important fields are missing
+- EMPTY         : No fields were retrieved but personalization was needed
+
+If the verdict is UNDER-RETRIEVED or EMPTY, list the additional fields from the Available
+field definitions that should have been retrieved, and explain why each is needed.
+
+Return as JSON with this exact structure:
+{{
+  "evaluation": {{
+    "<field_name>": {{"necessary": true/false, "reason": "<short reason>"}}
+  }},
+  "verdict": "MINIMAL | OVER-RETRIEVED | UNDER-RETRIEVED | EMPTY",
+  "verdict_reason": "<one sentence explaining the verdict>",
+  "missing_fields": [
+    {{"field": "<field_name>", "reason": "<why this field is needed to answer the question>"}}
+  ]
+}}
+
+Note: "missing_fields" should be an empty list [] when the verdict is MINIMAL or OVER-RETRIEVED."""
+
+
+def _build_policy_context(entry: dict, policy_chunks: dict) -> str:
+    """Look up chunks from output_json matching this entry's policy_source and section."""
+    policy_source = entry.get("policy_source", "")
+    section       = entry.get("section", "").strip()
+
+    # policy_source may be "Appointment.json" or bare "Appointment"
+    stem = Path(policy_source).stem if policy_source else ""
+    chunks = policy_chunks.get(stem, [])
+
+    if not chunks:
+        return "No policy chunk file found for this question."
+
+    # Filter to the matching section; fall back to all chunks if none match
+    if section:
+        matched = [c for c in chunks if c.get("section", "").strip() == section]
+    else:
+        matched = []
+
+    if not matched:
+        matched = chunks  # fallback: include all chunks from the policy file
+
+    # Limit to 5 chunks to avoid token bloat
+    return "\n\n".join(
+        f"[{i+1}] {c.get('metadata', {}).get('source', stem)} — {c.get('section', '(no section)')}\n{c.get('content', '')}"
+        for i, c in enumerate(matched[:5])
+    )
+
+
+def evaluate_entry(entry: dict, policy_chunks: dict) -> dict:
+    question = entry.get("question", "")
+    fields   = entry.get("required_fields", [])
+
+    policy_context = _build_policy_context(entry, policy_chunks)
+
+    messages = [
+        {
+            "role": "system",
+            "content": EVAL_SYSTEM_PROMPT.format(sap_data_dictionary=SAP_DATA_DICTIONARY),
+        },
+        {
+            "role": "user",
+            "content": EVAL_USER_PROMPT.format(
+                question=question,
+                fields=json.dumps(fields),
+                policy_context=policy_context,
+            ),
+        },
+    ]
+
+    response = az_client.chat.completions.create(
+        model=AZ_MODEL,
+        messages=messages,
+        temperature=0,
+        max_tokens=1024,
+        top_p=1,
+        frequency_penalty=0,
+        presence_penalty=0,
+    )
+    raw = response.choices[0].message.content.strip()
+
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        parsed = {"raw_response": raw, "parse_error": True}
+
+    return {
+        "policy_source":    entry.get("policy_source", ""),
+        "section":          entry.get("section", ""),
+        "question_number":  entry.get("question_number"),
+        "question":         question,
+        "fields_retrieved": fields,
+        "evaluation":       parsed.get("evaluation", {}),
+        "verdict":          parsed.get("verdict", "PARSE_ERROR"),
+        "verdict_reason":   parsed.get("verdict_reason", ""),
+        "missing_fields":   parsed.get("missing_fields", []),
+        "_file":            entry.get("_file", ""),
+        "_parse_error":     parsed.get("parse_error", False),
+    }
+
+print("evaluate_entry() defined — ready to run.")
