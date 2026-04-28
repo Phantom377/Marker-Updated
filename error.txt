@@ -1,40 +1,54 @@
-import json
-import os
-import random
-from pathlib import Path
-from datetime import datetime
-
-ANSWERED_FOLDER = Path(os.path.expanduser("~")) / "Downloads" / "llm_resending" / "answered"
-OUTPUT_FOLDER   = Path(os.path.expanduser("~")) / "Downloads" / "llm_resending"
-SAMPLE_SIZE     = 30
-
-# Load all answered entries across every JSON file
-all_entries = []
-for fname in sorted(os.listdir(ANSWERED_FOLDER)):
-    if not fname.endswith(".json"):
-        continue
-    with open(ANSWERED_FOLDER / fname, "r", encoding="utf-8") as f:
-        entries = json.load(f)
-    for entry in entries:
-        entry["_source_file"] = fname
-    all_entries.extend(entries)
-
-# Only sample from answered entries (skip skipped / timeout / error)
-answered_entries = [e for e in all_entries if e.get("status") == "answered"]
-
-print(f"Total entries loaded : {len(all_entries)}")
-print(f"Answered entries     : {len(answered_entries)}")
-
-if len(answered_entries) < SAMPLE_SIZE:
-    print(f"Warning: only {len(answered_entries)} answered entries available — sampling all of them.")
-    sample = answered_entries
-else:
-    sample = random.sample(answered_entries, SAMPLE_SIZE)
-
-timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-out_path  = OUTPUT_FOLDER / f"sample_{SAMPLE_SIZE}_{timestamp}.json"
-
-with open(out_path, "w", encoding="utf-8") as f:
-    json.dump(sample, f, ensure_ascii=False, indent=2)
-
-print(f"Sampled {len(sample)} questions → {out_path}")
+[
+{
+    "policy_source": "Appointment.json",
+    "section": "**C** **POLICY AND PROCEDURES ON**",
+    "question": "What are the different categories of employees mentioned in the policy, and how do they affect my role and benefits?",
+    "fields_retrieved": [
+      "employee_group",
+      "employee_sub_group",
+      "contract_type",
+      "contract_re_employment_start_date",
+      "contract_re_employement_end_date"
+    ],
+    "evaluation": {
+      "employee_group": {
+        "necessary": true,
+        "reason": "Defines the employment category, which directly impacts role and benefits."
+      },
+      "employee_sub_group": {
+        "necessary": true,
+        "reason": "Provides role classification, which is relevant to understanding how categories affect roles and benefits."
+      },
+      "contract_type": {
+        "necessary": true,
+        "reason": "Indicates the type and duration of employment, which can influence benefits and role expectations."
+      },
+      "contract_re_employment_start_date": {
+        "necessary": false,
+        "reason": "Specific start dates are not relevant to understanding categories or their impact on roles and benefits."
+      },
+      "contract_re_employement_end_date": {
+        "necessary": false,
+        "reason": "Specific end dates are not relevant to understanding categories or their impact on roles and benefits."
+      }
+    },
+    "verdict": "UNDER-RETRIEVED",
+    "verdict_reason": "Important fields related to benefits and role impact, such as leave_scheme and medical_scheme, are missing.",
+    "missing_fields": [
+      {
+        "field": "leave_scheme",
+        "reason": "Provides information on assigned leave benefits, which are directly impacted by employee categories."
+      },
+      {
+        "field": "medical_scheme",
+        "reason": "Defines medical benefits, which are influenced by employee categories and sub-groups."
+      },
+      {
+        "field": "ot_eligibility",
+        "reason": "Indicates overtime eligibility, which can vary by employee category and sub-group."
+      }
+    ],
+    "_file": "Appointment_doc_20260423_144000.json",
+    "_parse_error": false
+  },
+]
