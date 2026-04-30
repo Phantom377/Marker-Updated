@@ -1,16 +1,25 @@
-[
-  {
-    "policy_source": "Appointment.pdf.md",
-    "question_number": 1,
-    "question": "What are the eligibility criteria for re-employment after reaching statutory retirement age?",
-    "required_fields": [
-      "age",
-      "length_of_service",
-      "medical_scheme",
-      "leave_scheme"
-    ],
-    "answer": "You are not eligible for re-employment after reaching statutory retirement age because you are currently 23 years old, which is well below the statutory retirement age. The policy on re-employment applies to permanent employees who have reached the statutory retirement age, which is typically 62 years old.",
-    "status": "answered",
-    "error": ""
-  },
-]
+import json
+import pandas as pd
+from pathlib import Path
+
+FOLDER   = Path(__file__).resolve().parent / "answered_new"
+OUT_FILE = Path(__file__).resolve().parent / "output.xlsx"
+
+COLUMNS = ["policy_source", "question_number", "question", "required_fields", "answer"]
+
+rows = []
+for fpath in sorted(FOLDER.glob("*.json")):
+    with open(fpath, encoding="utf-8") as f:
+        entries = json.load(f)
+    for entry in entries:
+        rows.append({
+            "policy_source":   entry.get("policy_source", ""),
+            "question_number": entry.get("question_number"),
+            "question":        entry.get("question", ""),
+            "required_fields": ", ".join(entry.get("required_fields") or []),
+            "answer":          entry.get("answer", ""),
+        })
+
+df = pd.DataFrame(rows, columns=COLUMNS)
+df.to_excel(OUT_FILE, index=False)
+print(f"Wrote {len(df)} rows → {OUT_FILE}")
