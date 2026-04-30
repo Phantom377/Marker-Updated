@@ -1,25 +1,309 @@
+import sys
+import os
 import json
-import pandas as pd
+import re
+import requests
+from datetime import datetime
 from pathlib import Path
+from cryptography.fernet import Fernet
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 
-FOLDER   = Path(__file__).resolve().parent / "answered_new"
-OUT_FILE = Path(__file__).resolve().parent / "output.xlsx"
+TIMEOUT_SECONDS = 90
 
-COLUMNS = ["policy_source", "question_number", "question", "required_fields", "answer"]
+# --- Path setup ---
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(PROJECT_ROOT / "src"))
+sys.path.insert(0, str(PROJECT_ROOT / "src" / "server"))
 
-rows = []
-for fpath in sorted(FOLDER.glob("*.json")):
-    with open(fpath, encoding="utf-8") as f:
-        entries = json.load(f)
-    for entry in entries:
-        rows.append({
-            "policy_source":   entry.get("policy_source", ""),
-            "question_number": entry.get("question_number"),
-            "question":        entry.get("question", ""),
-            "required_fields": ", ".join(entry.get("required_fields") or []),
-            "answer":          entry.get("answer", ""),
-        })
+import server.chat.llm_core as llm_core
+from server.model_source.config import Config
+from openai import AzureOpenAI
+from langfuse import get_client
 
-df = pd.DataFrame(rows, columns=COLUMNS)
-df.to_excel(OUT_FILE, index=False)
-print(f"Wrote {len(df)} rows → {OUT_FILE}")
+# Valid field names parsed directly from the data dictionary — used to drop hallucinated fields
+_VALID_SAP_FIELDS = set(re.findall(r'^- (\w+) \(', llm_core.SAP_DATA_DICTIONARY, re.MULTILINE))
+
+# --- Fixed config ---
+USERNAME        = "ESP567E"
+SAP_URL         = "https://ai-gateway.qa.in.spdigital.sg/ai-search"
+SAP_DATA_KEY    = "ctWsiFNflfxvD4MWvVt0CqKKs0mYr1SWYe4kk-GV9Oo="
+
+BASE_DIR           = Path(__file__).resolve().parent
+QUERIES_FOLDER     = BASE_DIR / "input_queries"
+OUTPUT_JSON_FOLDER = BASE_DIR / "output_json"
+ANSWERED_FOLDER    = BASE_DIR / "answered"
+ANSWERED_FOLDER.mkdir(exist_ok=True)
+
+SAP_HEADERS = {
+    'Content-Type': 'application/json',
+    'model': 'openai',
+    'subModel': 'text-embedding-3-large',
+    'client-id': 'a3f7b27d767940f8be5f72779912fe03',
+    'client-secret': '2366CCd77d964e82831f5E251678C0Cf',
+    'project': 'HRBuddy',
+    'vector-index': 'spl_hr_buddy_sap'
+}
+
+# --- Helpers ---
+fernet = Fernet(SAP_DATA_KEY.encode())
+
+def decrypt_value(value: str) -> str:
+    if not value:
+        return ""
+    return fernet.decrypt(value.encode()).decode()
+
+
+def load_policy_chunks(policy_source: str) -> list[dict]:
+    """
+    Match a policy_source like 'Appointment.pdf.md' to chunks in output_json/
+    where metadata.source == 'Appointment.pdf' (the .md suffix is stripped).
+    Returns chunks normalized to the {title, content} shape that llm_core expects.
+    """
+    if not policy_source:
+        return []
+
+    target_source = policy_source[:-3] if policy_source.lower().endswith(".md") else policy_source
+
+    matched: list[dict] = []
+    if not OUTPUT_JSON_FOLDER.exists():
+        return matched
+
+    for fname in sorted(os.listdir(OUTPUT_JSON_FOLDER)):
+        if not fname.endswith(".json"):
+            continue
+        with open(OUTPUT_JSON_FOLDER / fname, "r", encoding="utf-8") as f:
+            chunks = json.load(f)
+        for chunk in chunks:
+            if chunk.get("metadata", {}).get("source", "") != target_source:
+                continue
+            section = (chunk.get("section") or "").strip()
+            title = section if section else target_source
+            matched.append({
+                "title":   title,
+                "content": chunk.get("content", ""),
+            })
+    return matched
+
+
+def load_queries_by_file() -> list[tuple[str, list[dict]]]:
+    """
+    Returns a list of (filename_stem, queries) — one entry per input file.
+
+    Supports the flat 'questions' format produced for whole-policy question sets:
+      {"policy_source": "Appointment.pdf.md", "questions": [{"question_number": 1, "question": "..."}]}
+    """
+    files = []
+    for fname in sorted(os.listdir(QUERIES_FOLDER)):
+        if not fname.endswith(".json"):
+            continue
+        with open(QUERIES_FOLDER / fname, "r", encoding="utf-8") as f:
+            data = json.load(f)
+
+        queries = []
+        if isinstance(data, dict) and "questions" in data:
+            policy_source = data.get("policy_source", "")
+            for qa in data.get("questions", []):
+                if "question" in qa:
+                    queries.append({
+                        "query":           qa["question"],
+                        "question_number": qa.get("question_number"),
+                        "policy_source":   policy_source,
+                    })
+        elif isinstance(data, list):
+            queries.extend([{"query": q} for q in data])
+        elif isinstance(data, dict) and "query" in data:
+            queries.append({"query": data["query"]})
+
+        if queries:
+            files.append((Path(fname).stem, queries))
+    return files
+
+
+def fetch_user_data(required_sap_fields: list[str]) -> dict:
+    payload = json.dumps({
+        "query": USERNAME,
+        "searchType": "vector",
+        "vector": {
+            "kind": "vector",
+            "fields": "user_name_vector",
+            "k": 3,
+            "exhaustive": True,
+        },
+        "$select": "user_name, " + ", ".join(required_sap_fields),
+        "top": 1
+    })
+    response = requests.post(SAP_URL, headers=SAP_HEADERS, data=payload)
+    if response.status_code != 200:
+        print(f"SAP search error {response.status_code}: {response.text}")
+        return {}
+
+    result = response.json().get("value", [])
+    if not result:
+        return {}
+
+    raw = result[0]
+    fields_to_decrypt = ["user_name"] + required_sap_fields
+    return {f: decrypt_value(raw.get(f, "")) for f in fields_to_decrypt}
+
+
+def run_pipeline(query: str, azure_config: dict, az_model: str, policy_source: str = "") -> dict:
+    # Create a fresh client per question so abandoned connections from timeouts
+    # don't exhaust the shared connection pool
+    az_openai_client = AzureOpenAI(
+        api_key=azure_config['api_key'],
+        api_version=azure_config['api_version'],
+        azure_endpoint=azure_config['azure_endpoint'],
+        timeout=TIMEOUT_SECONDS,
+    )
+
+    # Single trace created here in the worker thread so all child spans
+    # nest under it correctly
+    lf = get_client()
+    with lf.start_as_current_observation(as_type="span", name="QnA") as start_trace:
+
+        # Step 1 — Pull every chunk belonging to this policy (matched by source)
+        retrieval_list = load_policy_chunks(policy_source)
+        if not retrieval_list:
+            raise ValueError(f"No chunks found in output_json for policy_source={policy_source!r}")
+
+        # Step 2 — Identify required SAP fields
+        required_fields = llm_core.identify_required_personalization_fields(
+            az_openai_client=az_openai_client,
+            model_name=az_model,
+            retrieval_list=retrieval_list,
+            start_trace=start_trace,
+            query=query,
+        )
+        print(f"  Required fields (raw): {required_fields}")
+
+        # Step 2b — Drop any field not present in the SAP data dictionary
+        invalid = [f for f in required_fields if f not in _VALID_SAP_FIELDS]
+        if invalid:
+            print(f"  Dropping unrecognised fields: {invalid}")
+        required_fields = [f for f in required_fields if f in _VALID_SAP_FIELDS]
+        print(f"  Required fields (validated): {required_fields}")
+
+        # Step 3 — Fetch + decrypt employee data
+        employee_data = {}
+        if required_fields:
+            employee_data = fetch_user_data(required_fields)
+
+        # Step 4 — Personalize response using the reconciled fields
+        personalized_text = llm_core.personalize_response(
+            az_openai_client=az_openai_client,
+            model_name=az_model,
+            query=query,
+            retrieval_list=retrieval_list,
+            employee_data=employee_data,
+            start_trace=start_trace,
+        )
+
+        start_trace.update_trace(
+            input=query,
+            output=personalized_text,
+            user_id='pipeline',
+        )
+
+    return {
+        "required_fields": required_fields,
+        "answer":          personalized_text,
+    }
+
+
+def main():
+    config = Config()
+    os.environ["LANGFUSE_PUBLIC_KEY"] = config.get('tracing', 'LANGFUSE_PUBLIC_KEY')
+    os.environ["LANGFUSE_SECRET_KEY"] = config.get('tracing', 'LANGFUSE_SECRET_KEY')
+    os.environ["LANGFUSE_HOST"]       = config.get('tracing', 'LANGFUSE_HOST')
+
+    lf = get_client()
+
+    azure_config = {
+        'api_key':        config.config['AZURE_OPENAI_API_KEY'],
+        'api_version':    config.get('models', 'AZURE_OPENAI_API_VERSION'),
+        'azure_endpoint': config.get('models', 'AZURE_OPENAI_ENDPOINT'),
+    }
+    az_model = config.get('models', 'AZURE_OPENAI_CHAT_DEPLOYMENT')
+
+    files = load_queries_by_file()
+    total_files = len(files)
+    print(f"Loaded {total_files} input file(s)\n")
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+    for file_idx, (fname_stem, queries) in enumerate(files, 1):
+        print(f"=== File {file_idx}/{total_files}: {fname_stem}.json ({len(queries)} questions) ===\n")
+
+        answered = []
+        out_path = ANSWERED_FOLDER / f"{fname_stem}_{timestamp}.json"
+
+        for item in queries:
+            query = item["query"]
+            policy_source = item.get("policy_source", "")
+            print(f"[{policy_source} | Q{item.get('question_number','')}]")
+            print(f"Q: {query}")
+
+            if not policy_source:
+                print(f"  → Skipped: question has no policy_source.\n{'-'*60}\n")
+                answered.append({
+                    "policy_source":   policy_source,
+                    "question_number": item.get("question_number"),
+                    "question":        query,
+                    "required_fields": [],
+                    "answer":          "",
+                    "status":          "skipped",
+                    "error":           "No policy_source provided — cannot match policy chunks",
+                })
+                with open(out_path, "w", encoding="utf-8") as f:
+                    json.dump(answered, f, ensure_ascii=False, indent=2)
+                print(f"Saved {len(answered)}/{len(queries)} → {out_path}")
+                continue
+
+            error_message = ""
+            result: dict = {}
+            try:
+                executor = ThreadPoolExecutor(max_workers=1)
+                future = executor.submit(
+                    run_pipeline, query, azure_config, az_model, policy_source
+                )
+                try:
+                    result = future.result(timeout=TIMEOUT_SECONDS)
+                finally:
+                    executor.shutdown(wait=False)
+
+                lf.flush()
+
+                print(f"A: {result.get('answer','')}\n{'-'*60}\n")
+                status = "answered"
+
+            except FuturesTimeoutError:
+                print(f"TIMEOUT after {TIMEOUT_SECONDS}s — skipping question.\n{'-'*60}\n")
+                status = "timeout"
+                error_message = f"TimeoutError: exceeded {TIMEOUT_SECONDS}s"
+
+            except Exception as e:
+                print(f"ERROR: {e} — skipping question.\n{'-'*60}\n")
+                status = "error"
+                error_message = f"{type(e).__name__}: {e}"
+
+            answered.append({
+                "policy_source":   policy_source,
+                "question_number": item.get("question_number"),
+                "question":        query,
+                "required_fields": result.get("required_fields", []),
+                "answer":          result.get("answer", ""),
+                "status":          status,
+                "error":           error_message,
+            })
+
+            with open(out_path, "w", encoding="utf-8") as f:
+                json.dump(answered, f, ensure_ascii=False, indent=2)
+            print(f"Saved {len(answered)}/{len(queries)} → {out_path}")
+
+        print(f"\nFile done. {sum(1 for a in answered if a['status'] == 'answered')} answered, "
+              f"{sum(1 for a in answered if a['status'] == 'timeout')} timed out, "
+              f"{sum(1 for a in answered if a['status'] == 'error')} errored.\n")
+
+
+if __name__ == "__main__":
+    main()
